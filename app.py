@@ -14,6 +14,10 @@ if uploaded_file is not None:
     image = Image.open(uploaded_file).convert("RGB")
     st.image(image, caption="Original Image", use_column_width=True)
 
+    # Get original file size
+    uploaded_file.seek(0)  # Reset pointer
+    original_size = len(uploaded_file.getvalue())
+
     # Convert to numpy array
     image_np = np.array(image)
 
@@ -22,9 +26,12 @@ if uploaded_file is not None:
 
     # Convert to bytes
     compressed_bytes = io.BytesIO(compressed_image)
+    compressed_size = compressed_bytes.getbuffer().nbytes
 
-    # Show compression stats
-    st.write(f"✅ Compressed Size: {compressed_bytes.getbuffer().nbytes} bytes")
+    # Show original and compressed sizes
+    st.write(f"📏 **Original Size:** {original_size / 1024:.2f} KB")
+    st.write(f"✅ **Compressed Size:** {compressed_size / 1024:.2f} KB")
+    st.write(f"📉 **Compression Ratio:** {(compressed_size / original_size) * 100:.2f}% of original size")
 
     # Download button for JP2
     st.download_button("💾 Download Compressed Image (JP2)", compressed_bytes, "compressed.jp2", "image/jp2")
