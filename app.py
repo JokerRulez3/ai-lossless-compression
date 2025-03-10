@@ -21,17 +21,20 @@ if uploaded_file is not None:
     # Convert to numpy array
     image_np = np.array(image)
 
-    # Compress using JPEG2000 (lossless)
-    _, compressed_image = cv2.imencode(".jp2", image_np, [cv2.IMWRITE_JPEG2000_COMPRESSION_X1000, 100])
+    # Compress using JPEG2000 (default settings)
+    _, compressed_image = cv2.imencode(".jp2", image_np)
 
     # Convert to bytes
     compressed_bytes = io.BytesIO(compressed_image)
     compressed_size = compressed_bytes.getbuffer().nbytes
 
+    # Calculate compression ratio properly
+    compression_ratio = (compressed_size / original_size) * 100 if original_size > 0 else 0
+
     # Show original and compressed sizes
     st.write(f"📏 **Original Size:** {original_size / 1024:.2f} KB")
     st.write(f"✅ **Compressed Size:** {compressed_size / 1024:.2f} KB")
-    st.write(f"📉 **Compression Ratio:** {(compressed_size / original_size) * 100:.2f}% of original size")
+    st.write(f"📉 **Compression Ratio:** {compression_ratio:.2f}% of original size")
 
     # Download button for JP2
     st.download_button("💾 Download Compressed Image (JP2)", compressed_bytes, "compressed.jp2", "image/jp2")
@@ -41,16 +44,19 @@ if uploaded_file is not None:
     compressed_image_np = np.frombuffer(compressed_bytes.read(), dtype=np.uint8)
     decompressed_image = cv2.imdecode(compressed_image_np, cv2.IMREAD_COLOR)
 
-    # Convert OpenCV image to PIL for Streamlit
-    decompressed_pil = Image.fromarray(cv2.cvtColor(decompressed_image, cv2.COLOR_BGR2RGB))
+    if decompressed_image is not None:
+        # Convert OpenCV image to PIL for Streamlit
+        decompressed_pil = Image.fromarray(cv2.cvtColor(decompressed_image, cv2.COLOR_BGR2RGB))
 
-    # Show decompressed image
-    st.image(decompressed_pil, caption="Decompressed Image (JPG)", use_column_width=True)
+        # Show decompressed image
+        st.image(decompressed_pil, caption="Decompressed Image (JPG)", use_column_width=True)
 
-    # Convert decompressed image to bytes for downloading
-    decompressed_io = io.BytesIO()
-    decompressed_pil.save(decompressed_io, format="JPEG")
-    decompressed_io.seek(0)
+        # Convert decompressed image to bytes for downloading
+        decompressed_io = io.BytesIO()
+        decompressed_pil.save(decompressed_io, format="JPEG")
+        decompressed_io.seek(0)
 
-    # Download button for JPG
-    st.download_button("📥 Download Decompressed Image (JPG)", decompressed_io, "decompressed.jpg", "image/jpeg")
+        # Download button for JPG
+        st.download_button("📥 Download Decompressed Image (JPG)", decompressed_io, "decompressed.jpg", "image/jpeg")
+    else:
+        st.error("⚠️ Decompression failed. The compressed file may not be valid.")
