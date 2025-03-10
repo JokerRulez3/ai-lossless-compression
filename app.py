@@ -1,44 +1,30 @@
 import streamlit as st
-import torch
-from transformers import AutoModel
-from PIL import Image
+import cv2
 import numpy as np
+from PIL import Image
 import io
 
-# Load the pretrained AI model
-@st.cache_resource
-def load_model():
-    return AutoModel.from_pretrained("CAILLE/ImageCompression")
-
-model = load_model()
-
-# Streamlit UI
 st.title("🔗 AI-Based Lossless Image Compression")
 
 # File uploader
 uploaded_file = st.file_uploader("📂 Upload an Image", type=["jpg", "png", "jpeg"])
 
 if uploaded_file is not None:
-    # Display original image
+    # Load image
     image = Image.open(uploaded_file).convert("RGB")
     st.image(image, caption="Original Image", use_column_width=True)
 
-    # Convert image to tensor
-    image_np = np.array(image) / 255.0  # Normalize
-    image_tensor = torch.tensor(image_np).unsqueeze(0).float()
+    # Convert to numpy array
+    image_np = np.array(image)
 
-    # Perform AI-based compression
-    with torch.no_grad():
-        compressed_image = model(image_tensor)
+    # Compress using JPEG2000 (lossless)
+    _, compressed_image = cv2.imencode(".jp2", image_np, [cv2.IMWRITE_JPEG2000_COMPRESSION_X1000, 100])
 
-    # Simulate compression by saving the tensor and reloading it
-    compressed_bytes = io.BytesIO()
-    torch.save(compressed_image, compressed_bytes)
-    compressed_bytes.seek(0)
+    # Convert to bytes
+    compressed_bytes = io.BytesIO(compressed_image)
 
-    # Show compressed tensor size
-    st.write(f"✅ Compressed Tensor Size: {len(compressed_bytes.getvalue())} bytes")
+    # Show compression stats
+    st.write(f"✅ Compressed Size: {compressed_bytes.getbuffer().nbytes} bytes")
 
-    # Download compressed tensor
-    st.download_button("💾 Download Compressed File", compressed_bytes, "compressed.pt", "application/octet-stream")
-
+    # Download button
+    st.download_button("💾 Download Compressed Image", compressed_bytes, "compressed.jp2", "image/jp2")
