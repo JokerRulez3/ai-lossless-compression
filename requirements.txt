@@ -1,6 +1,8 @@
 streamlit
+torch
+torchvision
+diffusers
+transformers
 numpy
-opencv-python-headless
-Pillow
+pillow
 scikit-image
-tensorflow
