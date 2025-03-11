@@ -32,10 +32,13 @@ if uploaded_file is not None:
     decompressed_image_np = decompressed_image.numpy()
     end_decompression = time.time()
     
-    # **Fix: Properly Calculate Decompressed Size**
+    # **Ensure Decompressed Size is Correct**
     decompressed_pil = Image.fromarray(decompressed_image_np)
     decompressed_bytes = io.BytesIO()
-    decompressed_pil.save(decompressed_bytes, format="JPEG", quality=100)
+    
+    # **Fix: Save with same quality (80) as compression**
+    decompressed_pil.save(decompressed_bytes, format="JPEG", quality=80)
+    
     decompressed_size = len(decompressed_bytes.getvalue()) / 1024  # KB
 
     # Ensure image compatibility for SSIM
