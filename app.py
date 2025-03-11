@@ -1,3 +1,6 @@
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # Disable GPU, force CPU
+
 import streamlit as st
 import numpy as np
 import tensorflow as tf
