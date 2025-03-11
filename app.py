@@ -34,6 +34,9 @@ if uploaded_file is not None:
     decompressed_image = tf.io.decode_jpeg(compressed_image, channels=3)
     decompressed_image_np = decompressed_image.numpy()
     end_decompression = time.time()
+
+    # Calculate decompressed size
+    decompressed_size = decompressed_image_np.nbytes / 1024  # KB
     
     # Ensure image compatibility for SSIM
     min_dim = min(image_np.shape[0], image_np.shape[1])
@@ -64,6 +67,7 @@ if uploaded_file is not None:
              caption=["Original", "Compressed", "Decompressed"])
     st.write(f"📏 Original Size: {uploaded_file.size / 1024:.2f} KB")
     st.write(f"✅ Compressed Size: {compressed_size:.2f} KB ({compressed_size / (uploaded_file.size / 1024) * 100:.2f}% of original)")
+    st.write(f"📂 Decompressed Size: {decompressed_size:.2f} KB (should match original)")
     st.write(f"🎯 PSNR: {psnr_value:.2f} dB")
     st.write(f"🔍 SSIM: {ssim_value:.4f}")
     st.write(f"⏳ Upload Time: {upload_time:.4f} sec")
