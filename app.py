@@ -3,7 +3,8 @@ import cv2
 import numpy as np
 from PIL import Image
 import io
-import time
+time
+from skimage.metrics import peak_signal_noise_ratio as psnr, structural_similarity as ssim
 
 st.title("🔗 AI-Based Lossless Image Compression")
 
@@ -11,49 +12,47 @@ st.title("🔗 AI-Based Lossless Image Compression")
 uploaded_file = st.file_uploader("📂 Upload an Image", type=["jpg", "png", "jpeg"])
 
 if uploaded_file is not None:
-    # Start timer for upload time
-    upload_start_time = time.time()
-    
-    # Load image
+    start_upload_time = time.time()
     image = Image.open(uploaded_file).convert("RGB")
-    st.image(image, caption="🖼️ Original Image", use_column_width=True)
-    
-    # Convert to numpy array
     image_np = np.array(image)
+    original_size = uploaded_file.size / 1024  # KB
+    upload_time = time.time() - start_upload_time
     
-    # Get original size
-    uploaded_file.seek(0, io.SEEK_END)
-    original_size = uploaded_file.tell()
-    uploaded_file.seek(0)
+    st.image(image, caption="Original Image", use_column_width=True)
     
-    upload_time = time.time() - upload_start_time
-    
-    # Start timer for compression
-    compression_start_time = time.time()
-    
-    # Compress using optimized JPEG2000 settings
+    # Compress using JPEG2000 (lossless)
+    start_compress_time = time.time()
     _, compressed_image = cv2.imencode(".jp2", image_np, [cv2.IMWRITE_JPEG2000_COMPRESSION_X1000, 0])
-    
-    compression_time = time.time() - compression_start_time
-    
-    # Convert to bytes
     compressed_bytes = io.BytesIO(compressed_image)
-    compressed_size = compressed_bytes.getbuffer().nbytes
+    compressed_size = compressed_bytes.getbuffer().nbytes / 1024  # KB
+    compress_time = time.time() - start_compress_time
     
-    # Compute compression ratio
+    # Convert back to image for quality comparison
+    compressed_np = cv2.imdecode(np.frombuffer(compressed_bytes.getvalue(), np.uint8), cv2.IMREAD_UNCHANGED)
+    
+    # Ensure grayscale images are handled properly
+    if len(compressed_np.shape) == 2:
+        compressed_np = cv2.cvtColor(compressed_np, cv2.COLOR_GRAY2RGB)
+    
+    # Compute quality metrics
+    psnr_value = psnr(image_np, compressed_np, data_range=255)
+    ssim_value = ssim(image_np, compressed_np, multichannel=True, data_range=255)
+    
+    # Compression stats
     compression_ratio = (compressed_size / original_size) * 100
+    simulated_download_time = compressed_size / (500 * 1024)  # Assuming 500 KB/s download speed
     
-    # Simulated download time (assume 10 Mbps network speed)
-    network_speed_mbps = 10
-    simulated_download_time = (compressed_size * 8) / (network_speed_mbps * 1_000_000)
+    st.write(f"\U0001F4CF Original Size: {original_size:.2f} KB")
+    st.write(f"✅ Compressed Size: {compressed_size:.2f} KB")
+    st.write(f"📉 Compression Ratio: {compression_ratio:.2f}% of original size")
+    st.write(f"⏳ Upload Time: {upload_time:.4f} sec")
+    st.write(f"⚡ Compression Time: {compress_time:.4f} sec")
+    st.write(f"⬇️ Simulated Download Time: {simulated_download_time:.4f} sec")
+    st.write(f"🖼️ PSNR (Peak Signal-to-Noise Ratio): {psnr_value:.2f} dB")
+    st.write(f"🧐 SSIM (Structural Similarity Index): {ssim_value:.4f}")
     
-    # Show compression stats
-    st.write(f"📏 **Original Size:** {original_size / 1024:.2f} KB")
-    st.write(f"✅ **Compressed Size:** {compressed_size / 1024:.2f} KB")
-    st.write(f"📉 **Compression Ratio:** {compression_ratio:.2f}% of original size")
-    st.write(f"⏳ **Upload Time:** {upload_time:.4f} sec")
-    st.write(f"⚡ **Compression Time:** {compression_time:.4f} sec")
-    st.write(f"⬇️ **Simulated Download Time:** {simulated_download_time:.4f} sec")
+    # Display compressed image
+    st.image(compressed_np, caption="Compressed Image", use_column_width=True)
     
     # Download button
     st.download_button("💾 Download Compressed Image", compressed_bytes, "compressed.jp2", "image/jp2")
