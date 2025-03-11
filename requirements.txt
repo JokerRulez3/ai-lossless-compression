@@ -1,5 +1,7 @@
 streamlit
-opencv-python-headless
-pillow
 numpy
+opencv-python-headless
+opencv-contrib-python
+Pillow
 scikit-image
+tensorflow
