@@ -31,7 +31,7 @@ if uploaded_file is not None:
     start_compression = time.time()
     
     # Compress using JPEG2000 (lossless)
-    _, compressed_image = cv2.imencode(".jp2", image_np, [cv2.IMWRITE_JPEG2000_COMPRESSION_X1000, 0])
+    _, compressed_image = cv2.imencode(".jp2", image_np, [cv2.IMWRITE_JPEG2000_COMPRESSION_X1000, 10])
 
     compressed_bytes = io.BytesIO(compressed_image)
     compressed_size_kb = compressed_bytes.getbuffer().nbytes / 1024  # Convert bytes to KB
