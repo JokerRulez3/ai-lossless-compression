@@ -18,7 +18,7 @@ if uploaded_file is not None:
     
     # Convert to TensorFlow tensor
     image_tf = tf.convert_to_tensor(image_np, dtype=tf.uint8)
-    
+
     # AI-based Compression (JPEG using TensorFlow)
     start_compression = time.time()
     compressed_image = tf.io.encode_jpeg(image_tf, format='rgb', quality=80)
@@ -32,6 +32,12 @@ if uploaded_file is not None:
     decompressed_image_np = decompressed_image.numpy()
     end_decompression = time.time()
     
+    # **Fix: Properly Calculate Decompressed Size**
+    decompressed_pil = Image.fromarray(decompressed_image_np)
+    decompressed_bytes = io.BytesIO()
+    decompressed_pil.save(decompressed_bytes, format="JPEG", quality=100)
+    decompressed_size = len(decompressed_bytes.getvalue()) / 1024  # KB
+
     # Ensure image compatibility for SSIM
     min_dim = min(image_np.shape[0], image_np.shape[1])
     win_size = min(11, min_dim) if min_dim >= 7 else 3
@@ -57,11 +63,11 @@ if uploaded_file is not None:
     simulated_download_time = compressed_size / (5 * 1024)  # Assuming 5MB/s speed
     
     # Display results
-    st.image([image, Image.open(io.BytesIO(compressed_image_np)), Image.fromarray(decompressed_image_np)], 
+    st.image([image, Image.open(io.BytesIO(compressed_image_np)), decompressed_pil], 
              caption=["Original", "Compressed (AI-Based)", "Decompressed"])
     st.write(f"📏 Original Size: {uploaded_file.size / 1024:.2f} KB")
     st.write(f"✅ AI-Based Compressed Size: {compressed_size:.2f} KB ({compressed_size / (uploaded_file.size / 1024) * 100:.2f}% of original)")
-    st.write(f"📂 Decompressed Size: {decompressed_image_np.nbytes / 1024:.2f} KB")
+    st.write(f"📂 Decompressed Size: {decompressed_size:.2f} KB")
     st.write(f"🎯 PSNR (Peak Signal-to-Noise Ratio): {psnr_value:.2f} dB")
     st.write(f"🔍 SSIM (Structural Similarity Index): {ssim_value:.4f}")
     st.write(f"⏳ Upload Time: {upload_time:.4f} sec")
