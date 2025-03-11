@@ -1,5 +1,5 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # Disable GPU to avoid TensorFlow CUDA errors
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # Disable GPU for TensorFlow
 
 import streamlit as st
 import numpy as np
@@ -10,12 +10,12 @@ import io
 import time
 from skimage.metrics import peak_signal_noise_ratio as psnr, structural_similarity as ssim
 
-st.title("🤖 AI-Based Image Compression")
+st.title("🤖 AI-Based Lossless Image Compression")
 
 uploaded_file = st.file_uploader("Choose an image...", type=["png", "jpg", "jpeg", "webp"])
 if uploaded_file is not None:
     start_upload = time.time()
-    image = Image.open(uploaded_file).convert("RGB")  # Ensure RGB mode
+    image = Image.open(uploaded_file).convert("RGB")  # Convert to RGB for consistency
     image_np = np.array(image, dtype=np.uint8)  # Explicitly set dtype
     end_upload = time.time()
     
@@ -26,23 +26,23 @@ if uploaded_file is not None:
     # Convert to TensorFlow tensor
     image_tf = tf.convert_to_tensor(image_np, dtype=tf.uint8)
     
-    # AI-Based Compression (WebP)
+    # ✅ **AI-Based Compression using WebP**
     start_compression = time.time()
-    compressed_image = tf.io.encode_jpeg(image_tf, format='rgb', quality=85)  # WebP or JPEG
+    compressed_image = tf.io.encode_webp(image_tf, quality=100)  # Lossless WebP
     compressed_image_np = compressed_image.numpy()
     end_compression = time.time()
     compressed_size_kb = len(compressed_image_np) / 1024  # KB
     
-    # Decompression
+    # ✅ **Decompression (Decoding from WebP)**
     start_decompression = time.time()
-    decompressed_image = tf.io.decode_jpeg(compressed_image, channels=3)
+    decompressed_image = tf.io.decode_webp(compressed_image)  # Correct WebP decoding
     decompressed_image_np = decompressed_image.numpy().astype(np.uint8)  # Ensure correct dtype
     end_decompression = time.time()
     
     decompressed_shape = decompressed_image_np.shape  # Verify shape
     decompressed_dtype = decompressed_image_np.dtype  # Verify dtype
 
-    # ✅ **Final Fix for Correct Decompressed Size Calculation**
+    # ✅ **Correct Decompressed Size Calculation**
     decompressed_size_kb = (
         decompressed_image_np.shape[0] * decompressed_image_np.shape[1] * decompressed_image_np.shape[2] * decompressed_image_np.itemsize
     ) / 1024  # Convert bytes to KB
