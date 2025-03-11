@@ -1,5 +1,5 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # Force TensorFlow to use CPU
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # Disable GPU to avoid TensorFlow CUDA errors
 
 import streamlit as st
 import numpy as np
@@ -16,8 +16,11 @@ uploaded_file = st.file_uploader("Choose an image...", type=["png", "jpg", "jpeg
 if uploaded_file is not None:
     start_upload = time.time()
     image = Image.open(uploaded_file).convert("RGB")  # Ensure RGB mode
-    image_np = np.array(image)
+    image_np = np.array(image, dtype=np.uint8)  # Explicitly set dtype
     end_upload = time.time()
+    
+    original_size_kb = uploaded_file.size / 1024  # KB
+    original_shape = image_np.shape  # Get original shape
     
     # Convert to TensorFlow tensor
     image_tf = tf.convert_to_tensor(image_np, dtype=tf.uint8)
@@ -27,16 +30,18 @@ if uploaded_file is not None:
     compressed_image = tf.io.encode_jpeg(image_tf, format='rgb', quality=85)  # WebP or JPEG
     compressed_image_np = compressed_image.numpy()
     end_compression = time.time()
-    compressed_size = len(compressed_image_np) / 1024  # KB
+    compressed_size_kb = len(compressed_image_np) / 1024  # KB
     
     # Decompression
     start_decompression = time.time()
     decompressed_image = tf.io.decode_jpeg(compressed_image, channels=3)
-    decompressed_image_np = decompressed_image.numpy()
+    decompressed_image_np = decompressed_image.numpy().astype(np.uint8)  # Ensure correct dtype
     end_decompression = time.time()
-
-    # Calculate decompressed size
-    decompressed_size = decompressed_image_np.nbytes / 1024  # KB
+    
+    decompressed_shape = decompressed_image_np.shape  # Verify shape
+    
+    # ✅ **Fix Decompressed Size Calculation**
+    decompressed_size_kb = decompressed_image_np.size * decompressed_image_np.itemsize / 1024  # Corrected size
     
     # Ensure image compatibility for SSIM
     min_dim = min(image_np.shape[0], image_np.shape[1])
@@ -60,14 +65,18 @@ if uploaded_file is not None:
     upload_time = end_upload - start_upload
     compression_time = end_compression - start_compression
     decompression_time = end_decompression - start_decompression
-    simulated_download_time = compressed_size / (5 * 1024)  # 5MB/s speed assumption
+    simulated_download_time = compressed_size_kb / (5 * 1024)  # 5MB/s speed assumption
+    
+    # 🛠️ **Debugging Prints (Check in Logs)**
+    print(f"Original Shape: {original_shape}, Decompressed Shape: {decompressed_shape}")
+    print(f"Original Size: {original_size_kb:.2f} KB, Decompressed Size: {decompressed_size_kb:.2f} KB")
     
     # Display results
     st.image([image, Image.open(io.BytesIO(compressed_image_np)), Image.fromarray(decompressed_image_np)], 
              caption=["Original", "Compressed", "Decompressed"])
-    st.write(f"📏 Original Size: {uploaded_file.size / 1024:.2f} KB")
-    st.write(f"✅ Compressed Size: {compressed_size:.2f} KB ({compressed_size / (uploaded_file.size / 1024) * 100:.2f}% of original)")
-    st.write(f"📂 Decompressed Size: {decompressed_size:.2f} KB (should match original)")
+    st.write(f"📏 Original Size: {original_size_kb:.2f} KB")
+    st.write(f"✅ Compressed Size: {compressed_size_kb:.2f} KB ({compressed_size_kb / original_size_kb * 100:.2f}% of original)")
+    st.write(f"📂 Decompressed Size: {decompressed_size_kb:.2f} KB (should match original)")
     st.write(f"🎯 PSNR: {psnr_value:.2f} dB")
     st.write(f"🔍 SSIM: {ssim_value:.4f}")
     st.write(f"⏳ Upload Time: {upload_time:.4f} sec")
