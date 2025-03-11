@@ -24,9 +24,17 @@ if uploaded_file is not None:
     end_compression = time.time()
     compressed_size = len(compressed_image) / 1024  # Convert to KB
     
-    # Convert back to NumPy array
-    compressed_np = cv2.imdecode(np.frombuffer(compressed_image, np.uint8), cv2.IMREAD_COLOR)
-    compressed_np = cv2.cvtColor(compressed_np, cv2.COLOR_BGR2RGB)
+    # Convert back to NumPy array (decompression)
+    start_decompression = time.time()
+    decompressed_np = cv2.imdecode(np.frombuffer(compressed_image, np.uint8), cv2.IMREAD_COLOR)
+    decompressed_np = cv2.cvtColor(decompressed_np, cv2.COLOR_BGR2RGB)
+    end_decompression = time.time()
+    
+    # Compute decompressed size
+    decompressed_pil = Image.fromarray(decompressed_np)
+    decompressed_bytes = io.BytesIO()
+    decompressed_pil.save(decompressed_bytes, format="PNG")  # Save in PNG format
+    decompressed_size = len(decompressed_bytes.getvalue()) / 1024  # Convert to KB
     
     # Ensure image compatibility for SSIM
     min_dim = min(image_np.shape[0], image_np.shape[1])
@@ -34,7 +42,7 @@ if uploaded_file is not None:
     
     # Convert images to grayscale for SSIM
     gray_original = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
-    gray_compressed = cv2.cvtColor(compressed_np, cv2.COLOR_RGB2GRAY)
+    gray_compressed = cv2.cvtColor(decompressed_np, cv2.COLOR_RGB2GRAY)
     
     # Resize images for metric computation if too large
     if min_dim > 1024:
@@ -49,14 +57,19 @@ if uploaded_file is not None:
     # Calculate times
     upload_time = end_upload - start_upload
     compression_time = end_compression - start_compression
+    decompression_time = end_decompression - start_decompression
     simulated_download_time = compressed_size / (5 * 1024)  # Assuming 5MB/s speed
     
     # Display results
-    st.image([image, Image.open(io.BytesIO(compressed_image))], caption=["Original", "Compressed (WebP)"])
+    st.image([image, Image.open(io.BytesIO(compressed_image)), decompressed_pil],
+             caption=["Original", "Compressed (WebP)", "Decompressed"])
+    
     st.write(f"📏 Original Size: {uploaded_file.size / 1024:.2f} KB")
     st.write(f"✅ WebP Compressed Size: {compressed_size:.2f} KB ({compressed_size / (uploaded_file.size / 1024) * 100:.2f}% of original)")
+    st.write(f"📂 Decompressed Size: {decompressed_size:.2f} KB ({decompressed_size / compressed_size * 100:.2f}% of compressed)")
     st.write(f"🎯 PSNR (Peak Signal-to-Noise Ratio): {psnr_value:.2f} dB")
     st.write(f"🔍 SSIM (Structural Similarity Index): {ssim_value:.4f}")
     st.write(f"⏳ Upload Time: {upload_time:.4f} sec")
     st.write(f"⚡ Compression Time: {compression_time:.4f} sec")
+    st.write(f"♻️ Decompression Time: {decompression_time:.4f} sec")
     st.write(f"⬇️ Simulated Download Time: {simulated_download_time:.4f} sec")
