@@ -1,76 +1,56 @@
 import streamlit as st
-import numpy as np
-import cv2
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torchvision.transforms as transforms
+from torchvision.utils import save_image
 from PIL import Image
 import io
-import time
-from skimage.metrics import peak_signal_noise_ratio as psnr, structural_similarity as ssim
+import numpy as np
+import requests
+from model import SlimCAE  # Assuming SlimCAE is in a separate file model.py
 
-st.title("🔗 AI-Based Lossless Image Compression & Decompression")
+# Load Pre-trained Model (Modify path if needed)
+def load_model():
+    model = SlimCAE()
+    model_path = "slimcae_pretrained.pth"  # Update path if needed
+    try:
+        model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
+        model.eval()
+        return model
+    except Exception as e:
+        st.error(f"Failed to load pre-trained model: {e}")
+        return None
 
-uploaded_file = st.file_uploader("Choose an image...", type=["png", "jpg", "jpeg", "webp"])
-if uploaded_file is not None:
-    start_upload = time.time()
-    image = Image.open(uploaded_file)
-    image_np = np.array(image, dtype=np.uint8)  # Ensure 8-bit format
-    end_upload = time.time()
+# Function to compress and decompress an image
+def compress_decompress_image(image, model):
+    transform = transforms.Compose([
+        transforms.Resize((128, 128)),  # Resize to model input size
+        transforms.ToTensor()
+    ])
+    image_tensor = transform(image).unsqueeze(0)  # Add batch dimension
+    
+    with torch.no_grad():
+        compressed = model.encoder(image_tensor)  # Get compressed representation
+        decompressed = model.decoder(compressed)  # Reconstruct image
+    
+    decompressed_image = decompressed.squeeze(0).permute(1, 2, 0).numpy()  # Convert back to image format
+    decompressed_image = (decompressed_image * 255).astype(np.uint8)
+    return Image.fromarray(decompressed_image)
 
-    # Convert to OpenCV format
-    image_cv = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
+# Streamlit App UI
+st.title("AI-Based Image Compression with SlimCAE")
+model = load_model()
 
-    # Compress using WebP
-    start_compression = time.time()
-    _, compressed_image = cv2.imencode(".webp", image_cv, [cv2.IMWRITE_WEBP_QUALITY, 80])
-    end_compression = time.time()
-    compressed_size = len(compressed_image) / 1024  # Convert to KB
-
-    # Decompress WebP
-    start_decompression = time.time()
-    decompressed_np = cv2.imdecode(np.frombuffer(compressed_image, np.uint8), cv2.IMREAD_COLOR)
-    decompressed_np = cv2.cvtColor(decompressed_np, cv2.COLOR_BGR2RGB)
-    end_decompression = time.time()
-
-    # Ensure decompressed image has the same dtype and shape
-    decompressed_np = decompressed_np.astype(np.uint8)
-
-    # Convert decompressed image to JPEG format to check file size
-    decompressed_image = Image.fromarray(decompressed_np)
-    buffer = io.BytesIO()
-    decompressed_image.save(buffer, format="JPEG", quality=95)
-    decompressed_size = len(buffer.getvalue()) / 1024  # Convert to KB
-
-    # Ensure image compatibility for SSIM
-    min_dim = min(image_np.shape[0], image_np.shape[1])
-    win_size = min(11, min_dim) if min_dim >= 7 else 3  # Ensure win_size is valid
-
-    # Convert images to grayscale for SSIM
-    gray_original = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
-    gray_compressed = cv2.cvtColor(decompressed_np, cv2.COLOR_RGB2GRAY)
-
-    # Resize images for metric computation if too large
-    if min_dim > 1024:
-        target_size = (1024, 1024)
-        gray_original = cv2.resize(gray_original, target_size)
-        gray_compressed = cv2.resize(gray_compressed, target_size)
-
-    # Compute quality metrics
-    psnr_value = psnr(gray_original, gray_compressed, data_range=255)
-    ssim_value = ssim(gray_original, gray_compressed, data_range=255, win_size=win_size)
-
-    # Calculate times
-    upload_time = end_upload - start_upload
-    compression_time = end_compression - start_compression
-    decompression_time = end_decompression - start_decompression
-    simulated_download_time = compressed_size / (5 * 1024)  # Assuming 5MB/s speed
-
-    # Display results
-    st.image([image, decompressed_image], caption=["Original", "Decompressed (WebP)"])
-    st.write(f"📏 Original Size: {uploaded_file.size / 1024:.2f} KB")
-    st.write(f"✅ WebP Compressed Size: {compressed_size:.2f} KB ({compressed_size / (uploaded_file.size / 1024) * 100:.2f}% of original)")
-    st.write(f"📂 Decompressed Size: {decompressed_size:.2f} KB ({decompressed_size / compressed_size * 100:.2f}% of compressed)")
-    st.write(f"🎯 PSNR (Peak Signal-to-Noise Ratio): {psnr_value:.2f} dB")
-    st.write(f"🔍 SSIM (Structural Similarity Index): {ssim_value:.4f}")
-    st.write(f"⏳ Upload Time: {upload_time:.4f} sec")
-    st.write(f"⚡ Compression Time: {compression_time:.4f} sec")
-    st.write(f"♻️ Decompression Time: {decompression_time:.4f} sec")
-    st.write(f"⬇️ Simulated Download Time: {simulated_download_time:.4f} sec")
+uploaded_file = st.file_uploader("Upload an image", type=["jpg", "png", "jpeg"])
+if uploaded_file is not None and model is not None:
+    image = Image.open(uploaded_file).convert("RGB")
+    st.image(image, caption="Original Image", use_column_width=True)
+    
+    compressed_image = compress_decompress_image(image, model)
+    st.image(compressed_image, caption="Compressed & Reconstructed Image", use_column_width=True)
+    
+    img_byte_arr = io.BytesIO()
+    compressed_image.save(img_byte_arr, format="PNG")
+    img_byte_arr = img_byte_arr.getvalue()
+    st.download_button("Download Compressed Image", img_byte_arr, file_name="compressed.png", mime="image/png")
