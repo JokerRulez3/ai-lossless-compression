@@ -31,7 +31,7 @@ if uploaded_file is not None:
     start_compression = time.time()
     
     # Compress using JPEG2000 (lossless)
-    _, compressed_image = cv2.imencode(".jp2", image_np, [cv2.IMWRITE_JPEG2000_COMPRESSION_X1000, 10])
+    _, compressed_image = cv2.imencode(".webp", image_np, [cv2.IMWRITE_WEBP_QUALITY, 80])
 
     compressed_bytes = io.BytesIO(compressed_image)
     compressed_size_kb = compressed_bytes.getbuffer().nbytes / 1024  # Convert bytes to KB
@@ -51,7 +51,7 @@ if uploaded_file is not None:
 
     # Compute quality metrics
     psnr_value = psnr(gray_original, gray_compressed, data_range=255)
-    ssim_value = ssim(gray_original, gray_compressed, data_range=255)
+    ssim_value = ssim(image_np, compressed_np, data_range=image_np.max() - image_np.min())
 
     # Calculate times
     upload_time = end_upload - start_upload
