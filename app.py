@@ -64,7 +64,7 @@ if uploaded_file is not None:
     simulated_download_time = compressed_size / (5 * 1024)  # Assuming 5MB/s speed
 
     # Display results
-    st.image([image, decompressed_image], caption=["Original", "Decompressed (WebP)"])
+    st.image([image, Image.open(io.BytesIO(compressed_image)), decompressed_image], caption=["Original", "Compressed (WebP)", "Decompressed (WebP)"])
     st.write(f"📏 Original Size: {uploaded_file.size / 1024:.2f} KB")
     st.write(f"✅ WebP Compressed Size: {compressed_size:.2f} KB ({compressed_size / (uploaded_file.size / 1024) * 100:.2f}% of original)")
     st.write(f"📂 Decompressed Size: {decompressed_size:.2f} KB ({decompressed_size / compressed_size * 100:.2f}% of compressed)")
