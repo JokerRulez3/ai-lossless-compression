@@ -1,61 +1,92 @@
 import streamlit as st
-import torch
-from torchvision import transforms
-from diffusers import AutoencoderKL
-from PIL import Image
 import numpy as np
+import torch
+import torchvision.transforms as transforms
+import cv2
+import io
+import time
+from PIL import Image
 from skimage.metrics import peak_signal_noise_ratio as psnr, structural_similarity as ssim
+from transformers import AutoModelForVision2Seq, AutoImageProcessor
+import nest_asyncio
 
-# Load the VAE model
+# Fix Streamlit async conflicts
+nest_asyncio.apply()
+
+# Title
+st.title("🤖 AI-Based Image Compression & Decompression using VAE")
+
+# Load Pretrained Model from Hugging Face
 @st.cache_resource
-def load_vae():
-    vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse")
-    return vae
+def load_vae_model():
+    model_name = "madebyollin/karlo-v1-alpha"
+    model = AutoModelForVision2Seq.from_pretrained(model_name)
+    processor = AutoImageProcessor.from_pretrained(model_name)
+    return model, processor
 
-vae = load_vae()
-vae.eval()
+vae, processor = load_vae_model()
 
-# Image transformations
-preprocess = transforms.Compose([
-    transforms.ToTensor(),
-    transforms.Resize((512, 512)),
-    transforms.Normalize([0.5], [0.5]),
-])
-
-postprocess = transforms.Compose([
-    transforms.Normalize([-1], [2]),
-    transforms.ToPILImage(),
-])
-
-st.title("🔗 AI-Based Image Compression & Decompression")
-
+# File uploader
 uploaded_file = st.file_uploader("Choose an image...", type=["png", "jpg", "jpeg", "webp"])
+
 if uploaded_file is not None:
-    image = Image.open(uploaded_file).convert("RGB")
-    st.image(image, caption="Original Image", use_column_width=True)
+    start_upload = time.time()
+    image = Image.open(uploaded_file).convert("RGB")  # Ensure RGB mode
+    image_np = np.array(image)
+    end_upload = time.time()
 
-    # Preprocess the image
-    input_image = preprocess(image).unsqueeze(0)
+    # Convert to PyTorch Tensor
+    transform = transforms.ToTensor()
+    image_tensor = transform(image).unsqueeze(0)  # Add batch dimension
 
+    # Compress with VAE
+    start_compression = time.time()
     with torch.no_grad():
-        # Encode (compress) the image
-        latent_representation = vae.encode(input_image).latent_dist.sample()
+        latent_representation = vae.encoder(image_tensor).sample()
+        compressed_image = latent_representation.numpy()
+    end_compression = time.time()
 
-        # Decode (decompress) the image
-        reconstructed_image = vae.decode(latent_representation).sample()
+    compressed_size = compressed_image.nbytes / 1024  # KB
 
-    # Post-process the reconstructed image
-    reconstructed_image = reconstructed_image.squeeze(0)
-    reconstructed_image = postprocess(reconstructed_image)
+    # Decompress with VAE
+    start_decompression = time.time()
+    with torch.no_grad():
+        reconstructed_image = vae.decoder(latent_representation).sample()
+    end_decompression = time.time()
 
-    st.image(reconstructed_image, caption="Reconstructed Image", use_column_width=True)
+    # Convert reconstructed tensor to NumPy and PIL Image
+    decompressed_np = reconstructed_image.squeeze().permute(1, 2, 0).numpy()
+    decompressed_np = (decompressed_np * 255).astype(np.uint8)
+    decompressed_image = Image.fromarray(decompressed_np)
 
-    # Calculate metrics
-    original_np = np.array(image.resize((512, 512)))
-    reconstructed_np = np.array(reconstructed_image)
+    # Convert decompressed image to buffer for file download
+    decompressed_image_bytes = io.BytesIO()
+    decompressed_image.save(decompressed_image_bytes, format="PNG")
+    decompressed_image_bytes.seek(0)
 
-    psnr_value = psnr(original_np, reconstructed_np, data_range=255)
-    ssim_value = ssim(original_np, reconstructed_np, multichannel=True, data_range=255)
+    # Compute image quality metrics
+    gray_original = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
+    gray_decompressed = cv2.cvtColor(decompressed_np, cv2.COLOR_RGB2GRAY)
 
-    st.write(f"🎯 PSNR (Peak Signal-to-Noise Ratio): {psnr_value:.2f} dB")
-    st.write(f"🔍 SSIM (Structural Similarity Index): {ssim_value:.4f}")
+    psnr_value = psnr(gray_original, gray_decompressed, data_range=255)
+    ssim_value = ssim(gray_original, gray_decompressed, data_range=255)
+
+    # Time calculations
+    upload_time = end_upload - start_upload
+    compression_time = end_compression - start_compression
+    decompression_time = end_decompression - start_decompression
+    simulated_download_time = compressed_size / (5 * 1024)  # Assuming 5MB/s speed
+
+    # Display results
+    st.image([image, decompressed_image], caption=["Original", "Decompressed (VAE)"])
+    st.write(f"📏 Original Size: {uploaded_file.size / 1024:.2f} KB")
+    st.write(f"✅ Compressed Size: {compressed_size:.2f} KB ({compressed_size / (uploaded_file.size / 1024) * 100:.2f}% of original)")
+    st.write(f"🎯 PSNR: {psnr_value:.2f} dB")
+    st.write(f"🔍 SSIM: {ssim_value:.4f}")
+    st.write(f"⏳ Upload Time: {upload_time:.4f} sec")
+    st.write(f"⚡ Compression Time: {compression_time:.4f} sec")
+    st.write(f"♻️ Decompression Time: {decompression_time:.4f} sec")
+    st.write(f"⬇️ Simulated Download Time: {simulated_download_time:.4f} sec")
+
+    # Download button for decompressed image
+    st.download_button("⬇️ Download Decompressed Image", decompressed_image_bytes, file_name="decompressed_image.png", mime="image/png")
