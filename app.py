@@ -22,23 +22,22 @@ if uploaded_file is not None:
     original_size_kb = uploaded_file.size / 1024  # KB
     original_shape = image_np.shape  # Get original shape
     original_dtype = image_np.dtype  # Get original dtype
+
+    # ✅ **AI-Driven Preprocessing (Normalization)**
+    image_tf = tf.convert_to_tensor(image_np, dtype=tf.float32) / 255.0  # Normalize for AI processing
     
-    # Convert to TensorFlow tensor
-    image_tf = tf.convert_to_tensor(image_np, dtype=tf.uint8)
-    
-    # ✅ **AI-Based Compression using WebP**
+    # ✅ **Compression using OpenCV WebP**
     start_compression = time.time()
-    compressed_image = tf.io.encode_webp(image_tf, quality=100)  # Lossless WebP
-    compressed_image_np = compressed_image.numpy()
-    end_compression = time.time()
+    _, compressed_image_np = cv2.imencode('.webp', image_np, [cv2.IMWRITE_WEBP_QUALITY, 100])  # 100 for lossless
     compressed_size_kb = len(compressed_image_np) / 1024  # KB
-    
-    # ✅ **Decompression (Decoding from WebP)**
+    end_compression = time.time()
+
+    # ✅ **Decompression using OpenCV**
     start_decompression = time.time()
-    decompressed_image = tf.io.decode_webp(compressed_image)  # Correct WebP decoding
-    decompressed_image_np = decompressed_image.numpy().astype(np.uint8)  # Ensure correct dtype
+    decompressed_image_np = cv2.imdecode(compressed_image_np, cv2.IMREAD_COLOR)  # Decode WebP back
+    decompressed_image_np = cv2.cvtColor(decompressed_image_np, cv2.COLOR_BGR2RGB)  # Convert BGR to RGB
     end_decompression = time.time()
-    
+
     decompressed_shape = decompressed_image_np.shape  # Verify shape
     decompressed_dtype = decompressed_image_np.dtype  # Verify dtype
 
@@ -47,7 +46,7 @@ if uploaded_file is not None:
         decompressed_image_np.shape[0] * decompressed_image_np.shape[1] * decompressed_image_np.shape[2] * decompressed_image_np.itemsize
     ) / 1024  # Convert bytes to KB
     
-    # Ensure image compatibility for SSIM
+    # ✅ **Ensure Image Compatibility for SSIM**
     min_dim = min(image_np.shape[0], image_np.shape[1])
     win_size = min(11, min_dim) if min_dim >= 7 else 3
     
@@ -61,22 +60,22 @@ if uploaded_file is not None:
         gray_original = cv2.resize(gray_original, target_size)
         gray_decompressed = cv2.resize(gray_decompressed, target_size)
     
-    # Compute quality metrics (Avoid division by zero)
+    # ✅ **Compute Quality Metrics (Avoid Division by Zero)**
     psnr_value = psnr(gray_original + 1e-10, gray_decompressed + 1e-10, data_range=255)
     ssim_value = ssim(gray_original, gray_decompressed, data_range=255, win_size=win_size)
     
-    # Calculate times
+    # ✅ **Calculate Timings**
     upload_time = end_upload - start_upload
     compression_time = end_compression - start_compression
     decompression_time = end_decompression - start_decompression
     simulated_download_time = compressed_size_kb / (5 * 1024)  # 5MB/s speed assumption
     
-    # 🛠️ **Debugging Prints**
+    # ✅ **Debugging Prints**
     print(f"Original Shape: {original_shape}, Decompressed Shape: {decompressed_shape}")
     print(f"Original Dtype: {original_dtype}, Decompressed Dtype: {decompressed_dtype}")
     print(f"Original Size: {original_size_kb:.2f} KB, Decompressed Size: {decompressed_size_kb:.2f} KB")
     
-    # Display results
+    # ✅ **Display Results**
     st.image([image, Image.open(io.BytesIO(compressed_image_np)), Image.fromarray(decompressed_image_np)], 
              caption=["Original", "Compressed", "Decompressed"])
     st.write(f"📏 Original Size: {original_size_kb:.2f} KB")
