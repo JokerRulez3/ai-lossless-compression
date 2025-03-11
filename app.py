@@ -1,62 +1,58 @@
 import streamlit as st
 import numpy as np
 import cv2
-from PIL import Image
 import io
 import time
+from PIL import Image
 from skimage.metrics import peak_signal_noise_ratio as psnr, structural_similarity as ssim
 
 st.title("🔗 AI-Based Lossless Image Compression")
 
-uploaded_file = st.file_uploader("Choose an image...", type=["png", "jpg", "jpeg", "webp"])
-if uploaded_file is not None:
-    start_upload = time.time()
+uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"])
+
+if uploaded_file:
+    # Load image
     image = Image.open(uploaded_file)
     image_np = np.array(image)
-    end_upload = time.time()
+    original_size = len(uploaded_file.getvalue()) / 1024  # KB
     
-    # Convert to OpenCV format
-    image_cv = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
+    # Convert to BGR for OpenCV processing
+    image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
     
-    # Compress using WebP
+    # Start compression timer
     start_compression = time.time()
-    _, compressed_image = cv2.imencode(".webp", image_cv, [cv2.IMWRITE_WEBP_QUALITY, 80])
+    
+    # Compress to WebP
+    _, compressed_image = cv2.imencode(".webp", image_bgr, [cv2.IMWRITE_WEBP_QUALITY, 80])
+    compressed_size = len(compressed_image) / 1024  # KB
+    
+    # End compression timer
     end_compression = time.time()
-    compressed_size = len(compressed_image) / 1024  # Convert to KB
     
-    # Convert back to NumPy array
-    compressed_np = cv2.imdecode(np.frombuffer(compressed_image, np.uint8), cv2.IMREAD_COLOR)
-    compressed_np = cv2.cvtColor(compressed_np, cv2.COLOR_BGR2RGB)
+    # Decompress the WebP image
+    decompressed_image = cv2.imdecode(np.frombuffer(compressed_image, np.uint8), cv2.IMREAD_COLOR)
+    decompressed_size = decompressed_image.size * decompressed_image.itemsize / 1024  # KB
     
-    # Ensure image compatibility for SSIM
-    min_dim = min(image_np.shape[0], image_np.shape[1])
-    win_size = min(11, min_dim) if min_dim >= 7 else 3  # Ensure win_size is valid
+    # Convert decompressed image to RGB for metric calculations
+    decompressed_rgb = cv2.cvtColor(decompressed_image, cv2.COLOR_BGR2RGB)
     
-    # Convert images to grayscale for SSIM
-    gray_original = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
-    gray_compressed = cv2.cvtColor(compressed_np, cv2.COLOR_RGB2GRAY)
-    
-    # Resize images for metric computation if too large
-    if min_dim > 1024:
-        target_size = (1024, 1024)
-        gray_original = cv2.resize(gray_original, target_size)
-        gray_compressed = cv2.resize(gray_compressed, target_size)
+    # Convert to grayscale for SSIM/PSNR calculation
+    gray_original = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+    gray_decompressed = cv2.cvtColor(decompressed_image, cv2.COLOR_BGR2GRAY)
     
     # Compute quality metrics
-    psnr_value = psnr(gray_original, gray_compressed, data_range=255)
-    ssim_value = ssim(gray_original, gray_compressed, data_range=255, win_size=win_size)
-    
-    # Calculate times
-    upload_time = end_upload - start_upload
-    compression_time = end_compression - start_compression
-    simulated_download_time = compressed_size / (5 * 1024)  # Assuming 5MB/s speed
+    psnr_value = psnr(gray_original, gray_decompressed, data_range=255)
+    ssim_value = ssim(gray_original, gray_decompressed, data_range=255)
     
     # Display results
-    st.image([image, Image.open(io.BytesIO(compressed_image))], caption=["Original", "Compressed (WebP)"])
-    st.write(f"📏 Original Size: {uploaded_file.size / 1024:.2f} KB")
-    st.write(f"✅ WebP Compressed Size: {compressed_size:.2f} KB ({compressed_size / (uploaded_file.size / 1024) * 100:.2f}% of original)")
-    st.write(f"🎯 PSNR (Peak Signal-to-Noise Ratio): {psnr_value:.2f} dB")
-    st.write(f"🔍 SSIM (Structural Similarity Index): {ssim_value:.4f}")
-    st.write(f"⏳ Upload Time: {upload_time:.4f} sec")
-    st.write(f"⚡ Compression Time: {compression_time:.4f} sec")
-    st.write(f"⬇️ Simulated Download Time: {simulated_download_time:.4f} sec")
+    st.image(image, caption="Original Image", use_column_width=True)
+    st.image(decompressed_rgb, caption="Decompressed Image", use_column_width=True)
+    
+    st.markdown(f"""
+    📏 **Original Size**: {original_size:.2f} KB  
+    ✅ **Compressed Size**: {compressed_size:.2f} KB ({(compressed_size/original_size)*100:.2f}% of original)  
+    🔄 **Decompressed Size**: {decompressed_size:.2f} KB  
+    🎯 **PSNR (Peak Signal-to-Noise Ratio)**: {psnr_value:.2f} dB  
+    🔍 **SSIM (Structural Similarity Index)**: {ssim_value:.4f}  
+    ⏳ **Compression Time**: {end_compression - start_compression:.4f} sec  
+    """)
