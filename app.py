@@ -22,19 +22,29 @@ if uploaded_file is not None:
     # Convert to TensorFlow tensor
     image_tf = tf.convert_to_tensor(image_np, dtype=tf.uint8)
     
-    # AI-Based Efficient Compression (WebP)
+    # AI-Based Efficient Compression (WebP or JPEG)
     start_compression = time.time()
     compressed_image = tf.io.encode_jpeg(image_tf, format='rgb', quality=85)  # WebP or JPEG
     compressed_image_np = compressed_image.numpy()
     end_compression = time.time()
     compressed_size = len(compressed_image_np) / 1024  # KB
     
+    # Save compressed image in memory for download
+    compressed_image_bytes = io.BytesIO(compressed_image_np)
+    compressed_image_bytes.seek(0)
+
     # Decompression
     start_decompression = time.time()
     decompressed_image = tf.io.decode_jpeg(compressed_image, channels=3)
     decompressed_image_np = decompressed_image.numpy()
     end_decompression = time.time()
     
+    # Save decompressed image in memory for download
+    decompressed_image_pil = Image.fromarray(decompressed_image_np)
+    decompressed_image_bytes = io.BytesIO()
+    decompressed_image_pil.save(decompressed_image_bytes, format="PNG")  # Save as PNG
+    decompressed_image_bytes.seek(0)
+
     # Ensure image compatibility for SSIM
     min_dim = min(image_np.shape[0], image_np.shape[1])
     win_size = min(11, min_dim) if min_dim >= 7 else 3
@@ -70,3 +80,7 @@ if uploaded_file is not None:
     st.write(f"⚡ Compression Time: {compression_time:.4f} sec")
     st.write(f"♻️ Decompression Time: {decompression_time:.4f} sec")
     st.write(f"⬇️ Simulated Download Time: {simulated_download_time:.4f} sec")
+
+    # Download Buttons
+    st.download_button("⬇️ Download Compressed Image", compressed_image_bytes, file_name="compressed_image.webp", mime="image/webp")
+    st.download_button("⬇️ Download Decompressed Image", decompressed_image_bytes, file_name="decompressed_image.png", mime="image/png")
