@@ -21,11 +21,12 @@ if uploaded_file is not None:
     
     original_size_kb = uploaded_file.size / 1024  # KB
     original_shape = image_np.shape  # Get original shape
+    original_dtype = image_np.dtype  # Get original dtype
     
     # Convert to TensorFlow tensor
     image_tf = tf.convert_to_tensor(image_np, dtype=tf.uint8)
     
-    # AI-Based Efficient Compression (WebP)
+    # AI-Based Compression (WebP)
     start_compression = time.time()
     compressed_image = tf.io.encode_jpeg(image_tf, format='rgb', quality=85)  # WebP or JPEG
     compressed_image_np = compressed_image.numpy()
@@ -39,9 +40,12 @@ if uploaded_file is not None:
     end_decompression = time.time()
     
     decompressed_shape = decompressed_image_np.shape  # Verify shape
-    
-    # ✅ **Fix Decompressed Size Calculation**
-    decompressed_size_kb = decompressed_image_np.size * decompressed_image_np.itemsize / 1024  # Corrected size
+    decompressed_dtype = decompressed_image_np.dtype  # Verify dtype
+
+    # ✅ **Final Fix for Correct Decompressed Size Calculation**
+    decompressed_size_kb = (
+        decompressed_image_np.shape[0] * decompressed_image_np.shape[1] * decompressed_image_np.shape[2] * decompressed_image_np.itemsize
+    ) / 1024  # Convert bytes to KB
     
     # Ensure image compatibility for SSIM
     min_dim = min(image_np.shape[0], image_np.shape[1])
@@ -67,8 +71,9 @@ if uploaded_file is not None:
     decompression_time = end_decompression - start_decompression
     simulated_download_time = compressed_size_kb / (5 * 1024)  # 5MB/s speed assumption
     
-    # 🛠️ **Debugging Prints (Check in Logs)**
+    # 🛠️ **Debugging Prints**
     print(f"Original Shape: {original_shape}, Decompressed Shape: {decompressed_shape}")
+    print(f"Original Dtype: {original_dtype}, Decompressed Dtype: {decompressed_dtype}")
     print(f"Original Size: {original_size_kb:.2f} KB, Decompressed Size: {decompressed_size_kb:.2f} KB")
     
     # Display results
