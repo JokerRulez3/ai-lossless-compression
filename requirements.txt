@@ -1,9 +1,6 @@
-torch
-torchvision
-transformers
-accelerate
-numpy
-Pillow
-opencv-python
 streamlit
-nest_asyncio
+numpy
+opencv-python-headless
+Pillow
+scikit-image
+tensorflow
