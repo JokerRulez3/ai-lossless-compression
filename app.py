@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 from PIL import Image
 import io
-time
+import time
 from skimage.metrics import peak_signal_noise_ratio as psnr, structural_similarity as ssim
 
 st.title("🔗 AI-Based Lossless Image Compression")
