@@ -82,6 +82,7 @@ def download_model():
 @st.cache_resource
 def load_model():
     """Load the trained model into CPU"""
+    download_model()
     model = Autoencoder()
     model.load_state_dict(torch.load(MODEL_PATH, map_location=torch.device("cpu")))
     model.eval()
