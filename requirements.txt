@@ -1,6 +1,5 @@
 streamlit
-torch
-torchvision
-numpy
+opencv-python-headless
 pillow
-requests
+numpy
+scikit-image
