@@ -1,76 +1,124 @@
 import streamlit as st
+import torch
+import torch.nn as nn
+import torchvision.transforms as transforms
 import numpy as np
 import cv2
 from PIL import Image
 import io
-import time
+import os
+import requests
 from skimage.metrics import peak_signal_noise_ratio as psnr, structural_similarity as ssim
 
+# Model Path
+MODEL_PATH = "models/autoencoder.pth"
+MODEL_URL = "https://raw.githubusercontent.com/JokerRulez3/ai-lossless-compression/main/models/autoencoder.pth"
+
+# Define Autoencoder Model (Ensure it matches the training model)
+class Autoencoder(nn.Module):
+    def __init__(self):
+        super(Autoencoder, self).__init__()
+        self.encoder = nn.Sequential(
+            nn.Conv2d(3, 16, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),
+            nn.ReLU()
+        )
+        self.decoder = nn.Sequential(
+            nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.ReLU(),
+            nn.ConvTranspose2d(16, 3, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
+
+# Load model with auto-download
+@st.cache_resource
+def load_model():
+    if not os.path.exists(MODEL_PATH):
+        response = requests.get(MODEL_URL)
+        os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
+        with open(MODEL_PATH, "wb") as f:
+            f.write(response.content)
+
+    model = Autoencoder()
+    model.load_state_dict(torch.load(MODEL_PATH, map_location=torch.device("cpu")))
+    model.eval()
+    return model
+
+model = load_model()
+
+# Image Preprocessing
+def preprocess_image(image):
+    transform = transforms.Compose([
+        transforms.Resize((128, 128)),
+        transforms.ToTensor()
+    ])
+    return transform(image).unsqueeze(0)
+
+# AI Compression-Decompression
+def ai_compress_decompress(image, model):
+    image_tensor = preprocess_image(image)
+    with torch.no_grad():
+        compressed = model.encoder(image_tensor)
+        decompressed = model.decoder(compressed)
+    decompressed_np = decompressed.squeeze(0).permute(1, 2, 0).numpy()
+    decompressed_np = (decompressed_np * 255).astype(np.uint8)
+    return Image.fromarray(decompressed_np)
+
+# Streamlit UI
 st.title("🔗 AI-Based Lossless Image Compression & Decompression")
 
 uploaded_file = st.file_uploader("Choose an image...", type=["png", "jpg", "jpeg", "webp"])
 if uploaded_file is not None:
     start_upload = time.time()
     image = Image.open(uploaded_file)
-    image_np = np.array(image, dtype=np.uint8)  # Ensure 8-bit format
+    image_np = np.array(image, dtype=np.uint8)
     end_upload = time.time()
 
-    # Convert to OpenCV format
+    # WebP Compression
     image_cv = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
-
-    # Compress using WebP
     start_compression = time.time()
     _, compressed_image = cv2.imencode(".webp", image_cv, [cv2.IMWRITE_WEBP_QUALITY, 80])
     end_compression = time.time()
-    compressed_size = len(compressed_image) / 1024  # Convert to KB
+    compressed_size = len(compressed_image) / 1024  # KB
 
-    # Decompress WebP
+    # WebP Decompression
     start_decompression = time.time()
     decompressed_np = cv2.imdecode(np.frombuffer(compressed_image, np.uint8), cv2.IMREAD_COLOR)
     decompressed_np = cv2.cvtColor(decompressed_np, cv2.COLOR_BGR2RGB)
     end_decompression = time.time()
 
-    # Ensure decompressed image has the same dtype and shape
-    decompressed_np = decompressed_np.astype(np.uint8)
+    # AI Decompression
+    ai_decompressed = ai_compress_decompress(image, model)
 
-    # Convert decompressed image to JPEG format to check file size
-    decompressed_image = Image.fromarray(decompressed_np)
-    buffer = io.BytesIO()
-    decompressed_image.save(buffer, format="JPEG", quality=95)
-    decompressed_size = len(buffer.getvalue()) / 1024  # Convert to KB
-
-    # Ensure image compatibility for SSIM
+    # Compute Metrics
     min_dim = min(image_np.shape[0], image_np.shape[1])
-    win_size = min(11, min_dim) if min_dim >= 7 else 3  # Ensure win_size is valid
+    win_size = min(11, min_dim) if min_dim >= 7 else 3
 
-    # Convert images to grayscale for SSIM
     gray_original = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
     gray_compressed = cv2.cvtColor(decompressed_np, cv2.COLOR_RGB2GRAY)
 
-    # Resize images for metric computation if too large
-    if min_dim > 1024:
-        target_size = (1024, 1024)
-        gray_original = cv2.resize(gray_original, target_size)
-        gray_compressed = cv2.resize(gray_compressed, target_size)
-
-    # Compute quality metrics
     psnr_value = psnr(gray_original, gray_compressed, data_range=255)
     ssim_value = ssim(gray_original, gray_compressed, data_range=255, win_size=win_size)
 
-    # Calculate times
-    upload_time = end_upload - start_upload
-    compression_time = end_compression - start_compression
-    decompression_time = end_decompression - start_decompression
-    simulated_download_time = compressed_size / (5 * 1024)  # Assuming 5MB/s speed
-
-    # Display results
-    st.image([image, decompressed_image], caption=["Original", "Decompressed (WebP)"])
+    # Display Results
+    st.image([image, Image.fromarray(decompressed_np), ai_decompressed],
+             caption=["Original", "Decompressed (WebP)", "AI Decompressed"])
     st.write(f"📏 Original Size: {uploaded_file.size / 1024:.2f} KB")
     st.write(f"✅ WebP Compressed Size: {compressed_size:.2f} KB ({compressed_size / (uploaded_file.size / 1024) * 100:.2f}% of original)")
-    st.write(f"📂 Decompressed Size: {decompressed_size:.2f} KB ({decompressed_size / compressed_size * 100:.2f}% of compressed)")
-    st.write(f"🎯 PSNR (Peak Signal-to-Noise Ratio): {psnr_value:.2f} dB")
-    st.write(f"🔍 SSIM (Structural Similarity Index): {ssim_value:.4f}")
-    st.write(f"⏳ Upload Time: {upload_time:.4f} sec")
-    st.write(f"⚡ Compression Time: {compression_time:.4f} sec")
-    st.write(f"♻️ Decompression Time: {decompression_time:.4f} sec")
-    st.write(f"⬇️ Simulated Download Time: {simulated_download_time:.4f} sec")
+    st.write(f"🎯 PSNR: {psnr_value:.2f} dB")
+    st.write(f"🔍 SSIM: {ssim_value:.4f}")
+    st.write(f"⏳ Upload Time: {end_upload - start_upload:.4f} sec")
+    st.write(f"⚡ Compression Time: {end_compression - start_compression:.4f} sec")
+    st.write(f"♻️ Decompression Time: {end_decompression - start_decompression:.4f} sec")
+
+    # Download Button
+    img_byte_arr = io.BytesIO()
+    ai_decompressed.save(img_byte_arr, format="PNG")
+    img_byte_arr = img_byte_arr.getvalue()
+    st.download_button("Download AI Decompressed Image", img_byte_arr, file_name="ai_compressed.png", mime="image/png")
