@@ -1,4 +1,11 @@
 import streamlit as st
+import asyncio
+
+try:
+    asyncio.get_running_loop()
+except RuntimeError:
+    asyncio.set_event_loop(asyncio.new_event_loop())
+    
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
