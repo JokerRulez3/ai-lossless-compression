@@ -2,7 +2,7 @@ streamlit
 torch
 torchvision
 numpy
-pillow
 opencv-python-headless
+pillow
 scikit-image
 requests
