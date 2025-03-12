@@ -1,11 +1,9 @@
-pip>=25.0.1
-setuptools>=68.0.0
-wheel
 numpy<2
-streamlit
-torch
+streamlit>=1.12.0
+torch>=2.0.0
 torchvision
 opencv-python-headless
 pillow
 scikit-image
 requests
+asyncio

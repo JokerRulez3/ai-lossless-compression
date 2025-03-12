@@ -79,34 +79,53 @@ def download_model():
             f.write(response.content)
         print("Download complete.")
 
+import torch
+import torchvision.transforms as transforms
+from PIL import Image
+import numpy as np
+
 @st.cache_resource
 def load_model():
-    download_model()
+    """Load and initialize the trained model."""
+    download_model()  # Ensure the model is downloaded
     model = Autoencoder()
     model.load_state_dict(torch.load(MODEL_PATH, map_location=torch.device("cpu")))
     model.eval()
-    return model.float()  # Ensure FP32
+    return model.to("cpu").float()  # Ensure FP32 on CPU
 
+# Load the model
 model = load_model()
 
-# Image Preprocessing
+# ✅ Image Preprocessing
 def preprocess_image(image):
+    """
+    Convert an image to a tensor, ensuring it matches the model's expected input.
+    """
     transform = transforms.Compose([
-        transforms.Resize((256, 256)),
+        transforms.Resize((256, 256)),  # Ensure consistent size
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # Match Tanh output
+        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # Match Tanh output range [-1,1]
     ])
-    return transform(image).unsqueeze(0).float()  # Ensure FP32
+    return transform(image).unsqueeze(0).float()  # Ensure batch dimension & FP32
 
-# AI Compression-Decompression
+# ✅ AI Compression-Decompression
 def ai_compress_decompress(image, model):
-    image_tensor = preprocess_image(image)
+    """
+    Pass an image through the autoencoder for compression & decompression.
+    """
+    image_tensor = preprocess_image(image).to("cpu")  # Ensure it's on CPU
+
     with torch.no_grad():
-        compressed = model.encoder(image_tensor)
-        decompressed = model.decoder(compressed)
+        # Forward pass through Autoencoder
+        decompressed = model(image_tensor)
+
+    # ✅ Ensure output is scaled back to [0,255]
     decompressed_np = decompressed.squeeze(0).permute(1, 2, 0).numpy()
-    decompressed_np = (decompressed_np * 255).astype(np.uint8)
+    decompressed_np = np.clip((decompressed_np * 0.5) + 0.5, 0, 1)  # Convert back from [-1,1] to [0,1]
+    decompressed_np = (decompressed_np * 255).astype(np.uint8)  # Convert to uint8 for image display
+
     return Image.fromarray(decompressed_np)
+
 
 # Streamlit UI
 st.title("🔗 AI-Based Lossless Image Compression & Decompression")
