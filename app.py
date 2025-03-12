@@ -1,5 +1,11 @@
 import streamlit as st
 import asyncio
+
+try:
+    asyncio.get_running_loop()
+except RuntimeError:
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
@@ -15,12 +21,6 @@ from skimage.metrics import peak_signal_noise_ratio as psnr, structural_similari
 # Model Path
 MODEL_PATH = "models/autoencoder.pth"
 MODEL_URL = "https://raw.githubusercontent.com/JokerRulez3/ai-lossless-compression/main/models/autoencoder.pth"
-
-# Ensure async event loop works
-try:
-    asyncio.get_running_loop()
-except RuntimeError:
-    asyncio.set_event_loop(asyncio.new_event_loop())
 
 # Define Autoencoder Model
 class Autoencoder(nn.Module):
@@ -44,8 +44,8 @@ class Autoencoder(nn.Module):
         x = self.decoder(x)
         return x
 
-# Download Model if Missing
 def download_model():
+    """Downloads the model if missing or corrupted."""
     if not os.path.exists(MODEL_PATH) or os.path.getsize(MODEL_PATH) == 0:
         print("Downloading model...")
         os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
@@ -54,77 +54,76 @@ def download_model():
             f.write(response.content)
         print("Download complete.")
 
-# Load AI Model
 @st.cache_resource
 def load_model():
     download_model()
     model = Autoencoder()
     model.load_state_dict(torch.load(MODEL_PATH, map_location=torch.device("cpu")))
     model.eval()
-    return model
+    return model.float()  # Ensure FP32
 
 model = load_model()
 
-# 🛠 Fix 1: Optimize Image Preprocessing (Reduce Memory Usage)
+# Image Preprocessing
 def preprocess_image(image):
     transform = transforms.Compose([
-        transforms.Resize((256, 256), interpolation=transforms.InterpolationMode.BILINEAR),
-        transforms.ToTensor(),
-        transforms.ConvertImageDtype(torch.float16)  # ✅ Convert to float16 to reduce RAM usage
+        transforms.Resize((128, 128)),
+        transforms.ToTensor()
     ])
-    return transform(image).unsqueeze(0)
+    return transform(image).unsqueeze(0).float()  # Ensure FP32
 
-# 🛠 Fix 2: AI Compression-Decompression with Efficient Tensor Processing
+# AI Compression-Decompression
 def ai_compress_decompress(image, model):
     image_tensor = preprocess_image(image)
     with torch.no_grad():
         compressed = model.encoder(image_tensor)
         decompressed = model.decoder(compressed)
-    decompressed_np = decompressed.squeeze(0).permute(1, 2, 0).cpu().numpy()
+    decompressed_np = decompressed.squeeze(0).permute(1, 2, 0).numpy()
     decompressed_np = (decompressed_np * 255).astype(np.uint8)
     return Image.fromarray(decompressed_np)
 
 # Streamlit UI
 st.title("🔗 AI-Based Lossless Image Compression & Decompression")
 
-# Image Upload
 uploaded_file = st.file_uploader("Choose an image...", type=["png", "jpg", "jpeg", "webp"])
 if uploaded_file is not None:
     start_upload = time.time()
-    image = Image.open(uploaded_file).convert("RGB")  # Convert to RGB to avoid grayscale issues
+    image = Image.open(uploaded_file)
     image_np = np.array(image, dtype=np.uint8)
     end_upload = time.time()
 
-    # 🛠 Fix 3: Efficient WebP Compression
+    # WebP Compression
     image_cv = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
     start_compression = time.time()
     _, compressed_image = cv2.imencode(".webp", image_cv, [cv2.IMWRITE_WEBP_QUALITY, 80])
     end_compression = time.time()
     compressed_size = len(compressed_image) / 1024  # KB
 
-    # 🛠 Fix 4: WebP Decompression with Optimized Read
+    # WebP Decompression
     start_decompression = time.time()
-    decompressed_np = cv2.imdecode(np.frombuffer(compressed_image, np.uint8), cv2.IMREAD_UNCHANGED)
+    decompressed_np = cv2.imdecode(np.frombuffer(compressed_image, np.uint8), cv2.IMREAD_COLOR)
     decompressed_np = cv2.cvtColor(decompressed_np, cv2.COLOR_BGR2RGB)
     end_decompression = time.time()
 
     # AI Decompression
     ai_decompressed = ai_compress_decompress(image, model)
 
+    # Resize images to match dimensions
+    original_resized = cv2.resize(image_np, (128, 128))
+    webp_resized = cv2.resize(decompressed_np, (128, 128))
+    ai_resized = np.array(ai_decompressed)
+
+    # Convert to grayscale for PSNR/SSIM calculations
+    gray_original = cv2.cvtColor(original_resized, cv2.COLOR_RGB2GRAY)
+    gray_compressed = cv2.cvtColor(webp_resized, cv2.COLOR_RGB2GRAY)
+    gray_ai_decompressed = cv2.cvtColor(ai_resized, cv2.COLOR_RGB2GRAY)
+
     # Compute Metrics
-    min_dim = min(image_np.shape[0], image_np.shape[1])
-    win_size = min(11, min_dim) if min_dim >= 7 else 3  # 🛠 Auto-select `win_size` to prevent crashes
-
-    # 🛠 Fix 5: Resize Images to Match Before PSNR/SSIM Calculation
-    gray_original = cv2.cvtColor(cv2.resize(image_np, (256, 256), interpolation=cv2.INTER_AREA), cv2.COLOR_RGB2GRAY)
-    gray_compressed = cv2.cvtColor(cv2.resize(decompressed_np, (256, 256), interpolation=cv2.INTER_AREA), cv2.COLOR_RGB2GRAY)
-    gray_ai_decompressed = cv2.cvtColor(np.array(ai_decompressed), cv2.COLOR_RGB2GRAY)
-
     psnr_value_webp = psnr(gray_original, gray_compressed, data_range=255)
-    ssim_value_webp = ssim(gray_original, gray_compressed, data_range=255, win_size=win_size)
-    
+    ssim_value_webp = ssim(gray_original, gray_compressed, data_range=255)
+
     psnr_value_ai = psnr(gray_original, gray_ai_decompressed, data_range=255)
-    ssim_value_ai = ssim(gray_original, gray_ai_decompressed, data_range=255, win_size=win_size)
+    ssim_value_ai = ssim(gray_original, gray_ai_decompressed, data_range=255)
 
     # Display Results
     st.image([image, Image.fromarray(decompressed_np), ai_decompressed],
