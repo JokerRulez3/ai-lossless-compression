@@ -8,6 +8,7 @@ from PIL import Image
 import io
 import os
 import requests
+import time  # ✅ Fixed missing import
 from skimage.metrics import peak_signal_noise_ratio as psnr, structural_similarity as ssim
 
 # Model Path
@@ -40,6 +41,7 @@ class Autoencoder(nn.Module):
 @st.cache_resource
 def load_model():
     if not os.path.exists(MODEL_PATH):
+        st.warning("Downloading model... (this happens only once)")
         response = requests.get(MODEL_URL)
         os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
         with open(MODEL_PATH, "wb") as f:
@@ -100,19 +102,26 @@ if uploaded_file is not None:
     min_dim = min(image_np.shape[0], image_np.shape[1])
     win_size = min(11, min_dim) if min_dim >= 7 else 3
 
+    # Ensure image is grayscale for metric calculation
     gray_original = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
     gray_compressed = cv2.cvtColor(decompressed_np, cv2.COLOR_RGB2GRAY)
+    gray_ai_decompressed = cv2.cvtColor(np.array(ai_decompressed), cv2.COLOR_RGB2GRAY)  # ✅ Fix applied
 
-    psnr_value = psnr(gray_original, gray_compressed, data_range=255)
-    ssim_value = ssim(gray_original, gray_compressed, data_range=255, win_size=win_size)
+    psnr_value_webp = psnr(gray_original, gray_compressed, data_range=255)
+    ssim_value_webp = ssim(gray_original, gray_compressed, data_range=255, win_size=win_size)
+    
+    psnr_value_ai = psnr(gray_original, gray_ai_decompressed, data_range=255)
+    ssim_value_ai = ssim(gray_original, gray_ai_decompressed, data_range=255, win_size=win_size)
 
     # Display Results
     st.image([image, Image.fromarray(decompressed_np), ai_decompressed],
              caption=["Original", "Decompressed (WebP)", "AI Decompressed"])
     st.write(f"📏 Original Size: {uploaded_file.size / 1024:.2f} KB")
     st.write(f"✅ WebP Compressed Size: {compressed_size:.2f} KB ({compressed_size / (uploaded_file.size / 1024) * 100:.2f}% of original)")
-    st.write(f"🎯 PSNR: {psnr_value:.2f} dB")
-    st.write(f"🔍 SSIM: {ssim_value:.4f}")
+    
+    st.write(f"🎯 WebP PSNR: {psnr_value_webp:.2f} dB | AI PSNR: {psnr_value_ai:.2f} dB")
+    st.write(f"🔍 WebP SSIM: {ssim_value_webp:.4f} | AI SSIM: {ssim_value_ai:.4f}")
+
     st.write(f"⏳ Upload Time: {end_upload - start_upload:.4f} sec")
     st.write(f"⚡ Compression Time: {end_compression - start_compression:.4f} sec")
     st.write(f"♻️ Decompression Time: {end_decompression - start_decompression:.4f} sec")
