@@ -1,7 +1,10 @@
+pip>=25.0.1
+setuptools>=68.0.0
+wheel
+numpy==1.23.5
 streamlit
 torch==2.2.0
 torchvision==0.17.0
-numpy==1.23.5
 opencv-python-headless
 pillow
 scikit-image
