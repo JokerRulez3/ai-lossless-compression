@@ -44,16 +44,19 @@ class Autoencoder(nn.Module):
         x = self.decoder(x)
         return x
 
-# Load model with auto-download
-@st.cache_resource
-def load_model():
-    if not os.path.exists(MODEL_PATH):
-        st.warning("Downloading model... (this happens only once)")
-        response = requests.get(MODEL_URL)
+def download_model():
+    """Downloads the model from GitHub if it's missing or corrupted."""
+    if not os.path.exists(MODEL_PATH) or os.path.getsize(MODEL_PATH) == 0:
+        print("Downloading model...")
         os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
+        response = requests.get(MODEL_URL)
         with open(MODEL_PATH, "wb") as f:
             f.write(response.content)
+        print("Download complete.")
 
+@st.cache_resource
+def load_model():
+    download_model()
     model = Autoencoder()
     model.load_state_dict(torch.load(MODEL_PATH, map_location=torch.device("cpu")))
     model.eval()
