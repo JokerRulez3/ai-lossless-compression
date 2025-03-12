@@ -79,11 +79,6 @@ def download_model():
             f.write(response.content)
         print("Download complete.")
 
-import torch
-import torchvision.transforms as transforms
-from PIL import Image
-import numpy as np
-
 @st.cache_resource
 def load_model():
     """Load and initialize the trained model."""
@@ -118,6 +113,11 @@ def ai_compress_decompress(image, model):
     with torch.no_grad():
         # Forward pass through Autoencoder
         decompressed = model(image_tensor)
+
+    # ✅ Resize the output to match the original image size
+    decompressed = torch.nn.functional.interpolate(
+        decompressed, size=image.size[::-1], mode='bilinear', align_corners=False
+    )
 
     # ✅ Ensure output is scaled back to [0,255]
     decompressed_np = decompressed.squeeze(0).permute(1, 2, 0).numpy()
