@@ -19,24 +19,32 @@ import time
 from skimage.metrics import peak_signal_noise_ratio as psnr, structural_similarity as ssim
 
 # Model Path
-MODEL_PATH = "models/autoencoder.pth"
-MODEL_URL = "https://raw.githubusercontent.com/JokerRulez3/ai-lossless-compression/main/models/autoencoder.pth"
+MODEL_PATH = "models/autoencoder-highres.pth"
+MODEL_URL = "https://raw.githubusercontent.com/JokerRulez3/ai-lossless-compression/main/models/autoencoder-highres.pth"
 
 # Define Autoencoder Model
 class Autoencoder(nn.Module):
     def __init__(self):
         super(Autoencoder, self).__init__()
         self.encoder = nn.Sequential(
-            nn.Conv2d(3, 16, kernel_size=3, stride=2, padding=1),
+            nn.Conv2d(3, 64, 3, stride=2, padding=1),
             nn.ReLU(),
-            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),
+            ResidualBlock(64),
+            nn.Conv2d(64, 128, 3, stride=2, padding=1),
+            nn.ReLU(),
+            ResidualBlock(128),
+            nn.Conv2d(128, 256, 3, stride=2, padding=1),  # Increased downsampling
             nn.ReLU()
         )
         self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, padding=1, output_padding=1),
+            ResidualBlock(256),
+            nn.ConvTranspose2d(256, 128, 3, stride=2, padding=1, output_padding=1),
             nn.ReLU(),
-            nn.ConvTranspose2d(16, 3, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.Sigmoid()
+            ResidualBlock(128),
+            nn.ConvTranspose2d(128, 64, 3, stride=2, padding=1, output_padding=1),
+            nn.ReLU(),
+            nn.ConvTranspose2d(64, 3, 3, stride=2, padding=1, output_padding=1),
+            nn.Tanh()  # Use Tanh instead of Sigmoid for [-1, 1] range
         )
 
     def forward(self, x):
@@ -67,8 +75,9 @@ model = load_model()
 # Image Preprocessing
 def preprocess_image(image):
     transform = transforms.Compose([
-        transforms.Resize((128, 128)),
-        transforms.ToTensor()
+        transforms.Resize((256, 256)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # Match Tanh output
     ])
     return transform(image).unsqueeze(0).float()  # Ensure FP32
 
