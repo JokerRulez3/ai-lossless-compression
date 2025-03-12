@@ -24,7 +24,7 @@ from skimage.metrics import peak_signal_noise_ratio as psnr, structural_similari
 MODEL_PATH = "models/autoencoder-highres.pth"
 MODEL_URL = "https://raw.githubusercontent.com/JokerRulez3/ai-lossless-compression/main/models/autoencoder-highres.pth"
 
-# ✅ Residual Block with BatchNorm + LeakyReLU
+# ✅ Define Residual Block (Needed before loading the model)
 class ResidualBlock(nn.Module):
     def __init__(self, in_channels):
         super(ResidualBlock, self).__init__()
@@ -39,7 +39,7 @@ class ResidualBlock(nn.Module):
         x = self.bn2(self.conv2(x))
         return F.leaky_relu(x + residual, negative_slope=0.01)
 
-# Define Autoencoder Model
+# ✅ Define Autoencoder Model
 class Autoencoder(nn.Module):
     def __init__(self):
         super(Autoencoder, self).__init__()
@@ -50,7 +50,7 @@ class Autoencoder(nn.Module):
             nn.Conv2d(64, 128, 3, stride=2, padding=1),
             nn.ReLU(),
             ResidualBlock(128),
-            nn.Conv2d(128, 256, 3, stride=2, padding=1),  # Increased downsampling
+            nn.Conv2d(128, 256, 3, stride=2, padding=1),
             nn.ReLU()
         )
         self.decoder = nn.Sequential(
@@ -61,7 +61,7 @@ class Autoencoder(nn.Module):
             nn.ConvTranspose2d(128, 64, 3, stride=2, padding=1, output_padding=1),
             nn.ReLU(),
             nn.ConvTranspose2d(64, 3, 3, stride=2, padding=1, output_padding=1),
-            nn.Tanh()  # Use Tanh instead of Sigmoid for [-1, 1] range
+            nn.Tanh()  # Tanh output ([-1,1])
         )
 
     def forward(self, x):
@@ -81,48 +81,40 @@ def download_model():
 
 @st.cache_resource
 def load_model():
-    """Load and initialize the trained model."""
-    download_model()  # Ensure the model is downloaded
+    """Load the trained model into CPU"""
     model = Autoencoder()
     model.load_state_dict(torch.load(MODEL_PATH, map_location=torch.device("cpu")))
     model.eval()
-    return model.to("cpu").float()  # Ensure FP32 on CPU
+    return model.to("cpu").float()
 
-# Load the model
 model = load_model()
 
-# ✅ Image Preprocessing
+# ✅ Image Preprocessing (Ensure correct normalization)
 def preprocess_image(image):
-    """
-    Convert an image to a tensor, ensuring it matches the model's expected input.
-    """
     transform = transforms.Compose([
-        transforms.Resize((256, 256)),  # Ensure consistent size
+        transforms.Resize((256, 256)),  # Resize to match training size
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # Match Tanh output range [-1,1]
+        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # Normalize for Tanh
     ])
-    return transform(image).unsqueeze(0).float()  # Ensure batch dimension & FP32
+    return transform(image).unsqueeze(0).float()  # Add batch dimension
 
-# ✅ AI Compression-Decompression
+# ✅ AI Compression-Decompression (Fix output scaling)
 def ai_compress_decompress(image, model):
-    """
-    Pass an image through the autoencoder for compression & decompression.
-    """
-    image_tensor = preprocess_image(image).to("cpu")  # Ensure it's on CPU
+    """Compress and decompress an image using the AI model."""
+    image_tensor = preprocess_image(image).to("cpu")
 
     with torch.no_grad():
-        # Forward pass through Autoencoder
         decompressed = model(image_tensor)
 
-    # ✅ Resize the output to match the original image size
+    # ✅ Resize output to match original image size
     decompressed = torch.nn.functional.interpolate(
         decompressed, size=image.size[::-1], mode='bilinear', align_corners=False
     )
 
-    # ✅ Ensure output is scaled back to [0,255]
+    # ✅ Convert from Tanh [-1,1] to [0,255]
     decompressed_np = decompressed.squeeze(0).permute(1, 2, 0).numpy()
-    decompressed_np = np.clip((decompressed_np * 0.5) + 0.5, 0, 1)  # Convert back from [-1,1] to [0,1]
-    decompressed_np = (decompressed_np * 255).astype(np.uint8)  # Convert to uint8 for image display
+    decompressed_np = np.clip((decompressed_np + 1) / 2, 0, 1)  # Convert to [0,1]
+    decompressed_np = (decompressed_np * 255).astype(np.uint8)
 
     return Image.fromarray(decompressed_np)
 
