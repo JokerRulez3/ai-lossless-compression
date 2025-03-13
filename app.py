@@ -128,6 +128,23 @@ def brotli_decompress(compressed_data):
     decompressed_data = brotli.decompress(compressed_data)
     return Image.open(io.BytesIO(decompressed_data))
 
+# ✅ Dynamically Adjust `win_size` for SSIM Calculation
+def compute_metrics(original, compressed):
+    gray_original = cv2.cvtColor(original, cv2.COLOR_RGB2GRAY)
+    gray_compressed = cv2.cvtColor(compressed, cv2.COLOR_RGB2GRAY)
+
+    # Set window size based on smallest image dimension (must be odd & ≤ min_dim)
+    min_dim = min(gray_original.shape[:2])
+    win_size = min(11, min_dim if min_dim % 2 == 1 else min_dim - 1)  # Ensure odd value
+
+    # Compute PSNR
+    psnr_value = psnr(gray_original, gray_compressed, data_range=255)
+
+    # Compute SSIM with corrected window size
+    ssim_value = ssim(gray_original, gray_compressed, data_range=255, win_size=win_size)
+
+    return psnr_value, ssim_value
+
 # ✅ Streamlit UI
 st.title("🔗 AI-Based Lossless Image Compression & Decompression (Brotli)")
 
@@ -151,23 +168,6 @@ if uploaded_file is not None:
 
     # AI Decompression
     ai_decompressed = ai_compress_decompress(image, model)
-
-    # ✅ Dynamically Adjust `win_size` for SSIM Calculation
-def compute_metrics(original, compressed):
-    gray_original = cv2.cvtColor(original, cv2.COLOR_RGB2GRAY)
-    gray_compressed = cv2.cvtColor(compressed, cv2.COLOR_RGB2GRAY)
-
-    # Set window size based on smallest image dimension (must be odd & ≤ min_dim)
-    min_dim = min(gray_original.shape[:2])
-    win_size = min(11, min_dim if min_dim % 2 == 1 else min_dim - 1)  # Ensure odd value
-
-    # Compute PSNR
-    psnr_value = psnr(gray_original, gray_compressed, data_range=255)
-
-    # Compute SSIM with corrected window size
-    ssim_value = ssim(gray_original, gray_compressed, data_range=255, win_size=win_size)
-
-    return psnr_value, ssim_value
 
     # ✅ Compute PSNR/SSIM with Fix
     psnr_value_brotli, ssim_value_brotli = compute_metrics(image_np, np.array(decompressed_image))
