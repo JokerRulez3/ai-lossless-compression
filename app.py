@@ -107,11 +107,6 @@ def ai_compress_decompress(image, model):
     with torch.no_grad():
         decompressed = model(image_tensor)
 
-    # ✅ Resize output to match original image size
-    decompressed = torch.nn.functional.interpolate(
-        decompressed, size=image.size[::-1], mode='bilinear', align_corners=False
-    )
-
     # ✅ Convert from Tanh [-1,1] to [0,255]
     decompressed_np = decompressed.squeeze(0).permute(1, 2, 0).numpy()
     decompressed_np = np.clip((decompressed_np + 1) / 2, 0, 1)  # Convert to [0,1]
@@ -119,12 +114,12 @@ def ai_compress_decompress(image, model):
 
     return Image.fromarray(decompressed_np)
 
-# ✅ Brotli Compression
+# ✅ Brotli Compression (Fixed)
 def brotli_compress(image):
-    """Compress an image using Brotli"""
-    image_bytes = io.BytesIO()
-    image.save(image_bytes, format="PNG")
-    compressed = brotli.compress(image_bytes.getvalue(), quality=11)
+    """Compress an image using Brotli (with PNG conversion)."""
+    img_byte_arr = io.BytesIO()
+    image.save(img_byte_arr, format="PNG")  # Save as PNG first
+    compressed = brotli.compress(img_byte_arr.getvalue(), quality=11)
     return compressed
 
 # ✅ Brotli Decompression
@@ -157,25 +152,12 @@ if uploaded_file is not None:
     # AI Decompression
     ai_decompressed = ai_compress_decompress(image, model)
 
-    # ✅ Resize images to match dimensions
-    original_resized = cv2.resize(image_np, (128, 128))
-    brotli_resized = cv2.resize(np.array(decompressed_image), (128, 128))
-    ai_resized = np.array(ai_decompressed)
-
-    # ✅ Convert to grayscale for PSNR/SSIM calculations
-    gray_original = cv2.cvtColor(original_resized, cv2.COLOR_RGB2GRAY)
-    gray_compressed = cv2.cvtColor(brotli_resized, cv2.COLOR_RGB2GRAY)
-    gray_ai_decompressed = cv2.cvtColor(ai_resized, cv2.COLOR_RGB2GRAY)
-
-    # ✅ Ensure all images have the same dimensions
-    gray_ai_decompressed = cv2.resize(gray_ai_decompressed, (gray_original.shape[1], gray_original.shape[0]))
-
     # ✅ Compute Metrics
-    psnr_value_brotli = psnr(gray_original, gray_compressed, data_range=255)
-    ssim_value_brotli = ssim(gray_original, gray_compressed, data_range=255)
+    psnr_value_brotli = psnr(image_np, np.array(decompressed_image), data_range=255)
+    ssim_value_brotli = ssim(image_np, np.array(decompressed_image), data_range=255, multichannel=True)
 
-    psnr_value_ai = psnr(gray_original, gray_ai_decompressed, data_range=255)
-    ssim_value_ai = ssim(gray_original, gray_ai_decompressed, data_range=255)
+    psnr_value_ai = psnr(image_np, np.array(ai_decompressed), data_range=255)
+    ssim_value_ai = ssim(image_np, np.array(ai_decompressed), data_range=255, multichannel=True)
 
     # ✅ Display Results
     st.image([image, decompressed_image, ai_decompressed],
@@ -186,8 +168,5 @@ if uploaded_file is not None:
 
     st.write(f"🎯 Brotli PSNR: {psnr_value_brotli:.2f} dB | AI PSNR: {psnr_value_ai:.2f} dB")
     st.write(f"🔍 Brotli SSIM: {ssim_value_brotli:.4f} | AI SSIM: {ssim_value_ai:.4f}")
-
-    st.write(f"⚡ Compression Time: {end_compression - start_compression:.4f} sec")
-    st.write(f"♻️ Decompression Time: {end_decompression - start_decompression:.4f} sec")
 
     st.download_button("Download AI Decompressed Image", ai_decompressed, file_name="ai_compressed.png", mime="image/png")
