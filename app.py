@@ -1,11 +1,5 @@
 import streamlit as st
 import asyncio
-
-try:
-    asyncio.get_running_loop()
-except RuntimeError:
-    asyncio.set_event_loop(asyncio.new_event_loop())
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -17,7 +11,6 @@ import io
 import os
 import requests
 import time
-import brotli
 from skimage.metrics import peak_signal_noise_ratio as psnr, structural_similarity as ssim
 
 # Model Path
@@ -61,7 +54,7 @@ class Autoencoder(nn.Module):
             nn.ConvTranspose2d(128, 64, 3, stride=2, padding=1, output_padding=1),
             nn.ReLU(),
             nn.ConvTranspose2d(64, 3, 3, stride=2, padding=1, output_padding=1),
-            nn.Tanh()  # Output in [-1,1] range
+            nn.Tanh()  # Output in [-1,1]
         )
 
     def forward(self, x):
@@ -69,8 +62,8 @@ class Autoencoder(nn.Module):
         x = self.decoder(x)
         return x
 
+# ✅ Download Model if missing
 def download_model():
-    """Downloads the model if missing or corrupted."""
     if not os.path.exists(MODEL_PATH) or os.path.getsize(MODEL_PATH) == 0:
         print("Downloading model...")
         os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
@@ -81,7 +74,6 @@ def download_model():
 
 @st.cache_resource
 def load_model():
-    """Load the trained model into CPU"""
     download_model()
     model = Autoencoder()
     model.load_state_dict(torch.load(MODEL_PATH, map_location=torch.device("cpu")))
@@ -90,97 +82,96 @@ def load_model():
 
 model = load_model()
 
-# ✅ Image Preprocessing
+# ✅ Image Preprocessing (Tanh normalization)
 def preprocess_image(image):
     transform = transforms.Compose([
-        transforms.Resize((256, 256)),  # Resize to match training size
+        transforms.Resize((256, 256)),  
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # Normalize for Tanh
+        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  
     ])
-    return transform(image).unsqueeze(0).float()  # Add batch dimension
+    return transform(image).unsqueeze(0).float()
 
 # ✅ AI Compression-Decompression
 def ai_compress_decompress(image, model):
-    """Compress and decompress an image using the AI model."""
     image_tensor = preprocess_image(image).to("cpu")
 
     with torch.no_grad():
         decompressed = model(image_tensor)
 
-    # ✅ Convert from Tanh [-1,1] to [0,255]
+    # ✅ Resize output to original image size
+    decompressed = torch.nn.functional.interpolate(
+        decompressed, size=image.size[::-1], mode='bilinear', align_corners=False
+    )
+
+    # ✅ Convert [-1,1] to [0,255]
     decompressed_np = decompressed.squeeze(0).permute(1, 2, 0).numpy()
-    decompressed_np = np.clip((decompressed_np + 1) / 2, 0, 1)  # Convert to [0,1]
+    decompressed_np = np.clip((decompressed_np + 1) / 2, 0, 1)  
     decompressed_np = (decompressed_np * 255).astype(np.uint8)
 
     return Image.fromarray(decompressed_np)
 
-# ✅ Brotli Compression (Fixed)
-def brotli_compress(image):
-    """Compress an image using Brotli (with PNG conversion)."""
-    img_byte_arr = io.BytesIO()
-    image.save(img_byte_arr, format="PNG")  # Save as PNG first
-    compressed = brotli.compress(img_byte_arr.getvalue(), quality=11)
-    return compressed
-
-# ✅ Brotli Decompression
-def brotli_decompress(compressed_data):
-    """Decompress Brotli-compressed image"""
-    decompressed_data = brotli.decompress(compressed_data)
-    return Image.open(io.BytesIO(decompressed_data))
-
-# ✅ Dynamically Adjust `win_size` for SSIM Calculation
-def compute_metrics(original, compressed):
-    gray_original = cv2.cvtColor(original, cv2.COLOR_RGB2GRAY)
-    gray_compressed = cv2.cvtColor(compressed, cv2.COLOR_RGB2GRAY)
-
-    # Set window size based on smallest image dimension (must be odd & ≤ min_dim)
-    min_dim = min(gray_original.shape[:2])
-    win_size = min(11, min_dim if min_dim % 2 == 1 else min_dim - 1)  # Ensure odd value
-
-    # Compute PSNR
-    psnr_value = psnr(gray_original, gray_compressed, data_range=255)
-
-    # Compute SSIM with corrected window size
-    ssim_value = ssim(gray_original, gray_compressed, data_range=255, win_size=win_size)
-
-    return psnr_value, ssim_value
-
 # ✅ Streamlit UI
-st.title("🔗 AI-Based Lossless Image Compression & Decompression (Brotli)")
+st.title("🔗 AI-Based Lossless Image Compression & Decompression")
 
-uploaded_file = st.file_uploader("Choose an image...", type=["png", "jpg", "jpeg"])
+uploaded_file = st.file_uploader("Choose an image...", type=["png", "jpg", "jpeg", "webp"])
 if uploaded_file is not None:
     start_upload = time.time()
     image = Image.open(uploaded_file)
     image_np = np.array(image, dtype=np.uint8)
     end_upload = time.time()
 
-    # Brotli Compression
+    # ✅ WebP Compression
+    image_cv = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
     start_compression = time.time()
-    compressed_brotli = brotli_compress(image)
+    _, compressed_image = cv2.imencode(".webp", image_cv, [cv2.IMWRITE_WEBP_QUALITY, 80])
     end_compression = time.time()
-    compressed_size = len(compressed_brotli) / 1024  # KB
+    compressed_size = len(compressed_image) / 1024  
 
-    # Brotli Decompression
+    # ✅ WebP Decompression
     start_decompression = time.time()
-    decompressed_image = brotli_decompress(compressed_brotli)
+    decompressed_np = cv2.imdecode(np.frombuffer(compressed_image, np.uint8), cv2.IMREAD_COLOR)
+    decompressed_np = cv2.cvtColor(decompressed_np, cv2.COLOR_BGR2RGB)
     end_decompression = time.time()
 
-    # AI Decompression
+    # ✅ AI Decompression
     ai_decompressed = ai_compress_decompress(image, model)
 
-    # ✅ Compute PSNR/SSIM with Fix
-    psnr_value_brotli, ssim_value_brotli = compute_metrics(image_np, np.array(decompressed_image))
-    psnr_value_ai, ssim_value_ai = compute_metrics(image_np, np.array(ai_decompressed))
+    # ✅ Resize images for consistent dimensions
+    original_resized = cv2.resize(image_np, (128, 128))
+    webp_resized = cv2.resize(decompressed_np, (128, 128))
+    ai_resized = np.array(ai_decompressed)
+
+    # ✅ Convert to grayscale for PSNR/SSIM
+    gray_original = cv2.cvtColor(original_resized, cv2.COLOR_RGB2GRAY)
+    gray_compressed = cv2.cvtColor(webp_resized, cv2.COLOR_RGB2GRAY)
+    gray_ai_decompressed = cv2.cvtColor(ai_resized, cv2.COLOR_RGB2GRAY)
+
+    # ✅ Compute Metrics (Ensure shape match)
+    psnr_value_webp = psnr(gray_original, gray_compressed, data_range=255)
+    ssim_value_webp = ssim(gray_original, gray_compressed, data_range=255)
+
+    if gray_ai_decompressed.shape != gray_original.shape:
+        gray_ai_decompressed = cv2.resize(gray_ai_decompressed, (gray_original.shape[1], gray_original.shape[0]))
+
+    psnr_value_ai = psnr(gray_original, gray_ai_decompressed, data_range=255)
+    ssim_value_ai = ssim(gray_original, gray_ai_decompressed, data_range=255)
 
     # ✅ Display Results
-    st.image([image, decompressed_image, ai_decompressed],
-             caption=["Original", "Decompressed (Brotli)", "AI Decompressed"])
+    st.image([image, Image.fromarray(decompressed_np), ai_decompressed],
+             caption=["Original", "Decompressed (WebP)", "AI Decompressed"])
     
     st.write(f"📏 Original Size: {uploaded_file.size / 1024:.2f} KB")
-    st.write(f"✅ Brotli Compressed Size: {compressed_size:.2f} KB")
+    st.write(f"✅ WebP Compressed Size: {compressed_size:.2f} KB ({compressed_size / (uploaded_file.size / 1024) * 100:.2f}% of original)")
+    
+    st.write(f"🎯 WebP PSNR: {psnr_value_webp:.2f} dB | AI PSNR: {psnr_value_ai:.2f} dB")
+    st.write(f"🔍 WebP SSIM: {ssim_value_webp:.4f} | AI SSIM: {ssim_value_ai:.4f}")
 
-    st.write(f"🎯 Brotli PSNR: {psnr_value_brotli:.2f} dB | AI PSNR: {psnr_value_ai:.2f} dB")
-    st.write(f"🔍 Brotli SSIM: {ssim_value_brotli:.4f} | AI SSIM: {ssim_value_ai:.4f}")
+    st.write(f"⏳ Upload Time: {end_upload - start_upload:.4f} sec")
+    st.write(f"⚡ Compression Time: {end_compression - start_compression:.4f} sec")
+    st.write(f"♻️ Decompression Time: {end_decompression - start_decompression:.4f} sec")
 
-    st.download_button("Download AI Decompressed Image", ai_decompressed, file_name="ai_compressed.png", mime="image/png")
+    # ✅ Download Button
+    img_byte_arr = io.BytesIO()
+    ai_decompressed.save(img_byte_arr, format="PNG")
+    img_byte_arr = img_byte_arr.getvalue()
+    st.download_button("Download AI Decompressed Image", img_byte_arr, file_name="ai_compressed.png", mime="image/png")
