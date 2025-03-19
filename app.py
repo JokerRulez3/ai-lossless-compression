@@ -17,6 +17,21 @@ from skimage.metrics import peak_signal_noise_ratio as psnr, structural_similari
 MODEL_PATH = "models/srgan_generator.pth"
 MODEL_URL = "https://raw.githubusercontent.com/JokerRulez3/ai-lossless-compression/main/models/srgan_generator.pth"
 
+# ✅ Define Residual Block
+class ResidualBlock(nn.Module):
+    def __init__(self, in_channels):
+        super(ResidualBlock, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm2d(in_channels)
+        self.conv2 = nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm2d(in_channels)
+
+    def forward(self, x):
+        residual = x
+        x = F.leaky_relu(self.bn1(self.conv1(x)), negative_slope=0.01)
+        x = self.bn2(self.conv2(x))
+        return F.leaky_relu(x + residual, negative_slope=0.01)
+
 # ✅ Define SRGAN Generator Model
 class SRGenerator(nn.Module):
     def __init__(self):
