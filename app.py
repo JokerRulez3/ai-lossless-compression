@@ -15,7 +15,7 @@ from skimage.metrics import peak_signal_noise_ratio as psnr, structural_similari
 
 # ✅ Model Paths
 MODEL_PATH = "models/srgan_generator.pth"
-MODEL_URL = "https://raw.githubusercontent.com/JokerRulez3/ai-lossless-compression/main/models/srgan_generator.pth.pth"
+MODEL_URL = "https://raw.githubusercontent.com/JokerRulez3/ai-lossless-compression/main/models/srgan_generator.pth"
 
 # ✅ Define SRGAN Generator Model
 class SRGenerator(nn.Module):
@@ -24,12 +24,12 @@ class SRGenerator(nn.Module):
         self.conv1 = nn.Conv2d(3, 64, kernel_size=9, stride=1, padding=4)
         self.prelu = nn.PReLU()
 
-        # Residual blocks
+        # ✅ Ensure Residual Blocks are Defined Exactly as in Training
         self.res_blocks = nn.Sequential(
-            *[self._residual_block(64) for _ in range(5)]
+            *[ResidualBlock(64) for _ in range(5)]
         )
 
-        # Upsampling blocks
+        # ✅ Ensure Upsampling Layers are Defined as in Training
         self.upsample = nn.Sequential(
             nn.Conv2d(64, 256, kernel_size=3, stride=1, padding=1),
             nn.PixelShuffle(2),
@@ -49,14 +49,6 @@ class SRGenerator(nn.Module):
         x = self.tanh(self.conv2(x))
         return x
 
-    def _residual_block(self, channels):
-        return nn.Sequential(
-            nn.Conv2d(channels, channels, kernel_size=3, padding=1),
-            nn.BatchNorm2d(channels),
-            nn.PReLU(),
-            nn.Conv2d(channels, channels, kernel_size=3, padding=1),
-            nn.BatchNorm2d(channels),
-        )
 
 # ✅ Download Model if missing
 def download_model():
