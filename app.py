@@ -12,6 +12,7 @@ from skimage.metrics import peak_signal_noise_ratio as psnr, structural_similari
 
 # ✅ Model Path
 MODEL_PATH = "models/srgan_generator.pth"
+MODEL_URL = "https://raw.githubusercontent.com/JokerRulez3/ai-lossless-compression/main/models/srgan_generator.pth"
 
 # ✅ Residual Block Definition
 class ResidualBlock(nn.Module):
@@ -52,10 +53,21 @@ class SRGenerator(nn.Module):
         x = self.upsample(x)
         x = self.tanh(self.conv2(x))
         return x
+        
+# ✅ Download Model if missing
+def download_model():
+    if not os.path.exists(MODEL_PATH) or os.path.getsize(MODEL_PATH) == 0:
+        print("Downloading model...")
+        os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
+        response = requests.get(MODEL_URL)
+        with open(MODEL_PATH, "wb") as f:
+            f.write(response.content)
+        print("Download complete.")
 
 # ✅ Load Model
 @st.cache_resource
 def load_model():
+    download_model()
     model = SRGenerator()
     model.load_state_dict(torch.load(MODEL_PATH, map_location='cpu'))
     model.eval()
