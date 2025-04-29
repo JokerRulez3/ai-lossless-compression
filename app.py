@@ -35,7 +35,7 @@ class SRGenerator(nn.Module):
         super().__init__()
         self.conv1 = nn.Conv2d(3, 64, kernel_size=9, stride=1, padding=4)
         self.prelu = nn.PReLU()
-        self.res_blocks = nn.Sequential(*[ResidualBlock(64) for _ in range(5)])
+        self.res_blocks = nn.Sequential(*[ResidualBlock(64) for _ in range(8)])
         self.upsample = nn.Sequential(
             nn.Conv2d(64, 256, kernel_size=3, padding=1),
             nn.PixelShuffle(2),
