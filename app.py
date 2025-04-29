@@ -7,133 +7,102 @@ import numpy as np
 import cv2
 from PIL import Image
 import io
-import os
 from skimage.metrics import peak_signal_noise_ratio as psnr, structural_similarity as ssim
 
-# ✅ Model Path
-MODEL_PATH = "models/srgan_generator.pth"
-MODEL_URL = "https://raw.githubusercontent.com/JokerRulez3/ai-lossless-compression/main/models/srgan_generator.pth"
+# ✅ Model Path (Your Colab-trained model)
+MODEL_PATH = "models/srgan_generator_webp.pth"
 
-# ✅ Residual Block Definition
+# ✅ Residual Block
 class ResidualBlock(nn.Module):
-    def __init__(self, in_channels):
+    def __init__(self, ch):
         super().__init__()
-        self.conv1 = nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1)
-        self.bn1 = nn.BatchNorm2d(in_channels)
-        self.conv2 = nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1)
-        self.bn2 = nn.BatchNorm2d(in_channels)
-
+        self.conv1 = nn.Conv2d(ch, ch, 3, padding=1)
+        self.bn1 = nn.BatchNorm2d(ch)
+        self.conv2 = nn.Conv2d(ch, ch, 3, padding=1)
+        self.bn2 = nn.BatchNorm2d(ch)
     def forward(self, x):
-        residual = x
+        res = x
         x = F.leaky_relu(self.bn1(self.conv1(x)), 0.01)
         x = self.bn2(self.conv2(x))
-        return F.leaky_relu(x + residual, 0.01)
+        return F.leaky_relu(x + res, 0.01)
 
-# ✅ SRGAN Generator Model Definition
+# ✅ SRGAN Generator
 class SRGenerator(nn.Module):
     def __init__(self):
         super().__init__()
-        self.conv1 = nn.Conv2d(3, 64, kernel_size=9, stride=1, padding=4)
+        self.conv1 = nn.Conv2d(3, 64, 9, padding=4)
         self.prelu = nn.PReLU()
         self.res_blocks = nn.Sequential(*[ResidualBlock(64) for _ in range(8)])
         self.upsample = nn.Sequential(
-            nn.Conv2d(64, 256, kernel_size=3, padding=1),
-            nn.PixelShuffle(2),
-            nn.PReLU(),
-            nn.Conv2d(64, 256, kernel_size=3, padding=1),
-            nn.PixelShuffle(2),
-            nn.PReLU(),
+            nn.Conv2d(64, 256, 3, padding=1), nn.PixelShuffle(2), nn.PReLU(),
+            nn.Conv2d(64, 256, 3, padding=1), nn.PixelShuffle(2), nn.PReLU()
         )
-        self.conv2 = nn.Conv2d(64, 3, kernel_size=9, padding=4)
+        self.conv2 = nn.Conv2d(64, 3, 9, padding=4)
         self.tanh = nn.Tanh()
-
     def forward(self, x):
         x = self.prelu(self.conv1(x))
         x = self.res_blocks(x)
         x = self.upsample(x)
-        x = self.tanh(self.conv2(x))
-        return x
-        
-# ✅ Download Model if missing
-def download_model():
-    if not os.path.exists(MODEL_PATH) or os.path.getsize(MODEL_PATH) == 0:
-        print("Downloading model...")
-        os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
-        response = requests.get(MODEL_URL)
-        with open(MODEL_PATH, "wb") as f:
-            f.write(response.content)
-        print("Download complete.")
+        return self.tanh(self.conv2(x))
 
 # ✅ Load Model
 @st.cache_resource
 def load_model():
-    download_model()
     model = SRGenerator()
-    model.load_state_dict(torch.load(MODEL_PATH, map_location=torch.device("cpu")))
+    model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
     model.eval()
-    return model.to("cpu").float()
+    return model
 
 model = load_model()
 
-# ✅ Image Preprocessing (Matching Training Setup)
-def preprocess_webp_image(webp_buffer):
-    # Decode WebP compressed image
-    img_np = cv2.imdecode(np.frombuffer(webp_buffer, np.uint8), cv2.IMREAD_COLOR)
-    img_rgb = Image.fromarray(cv2.cvtColor(img_np, cv2.COLOR_BGR2RGB))
-
-    # Resize and normalize as done during training
+# ✅ Preprocess function
+def preprocess(image):
     transform = transforms.Compose([
         transforms.Resize((64, 64)),
         transforms.ToTensor(),
         transforms.Normalize([0.5]*3, [0.5]*3)
     ])
-    return transform(img_rgb).unsqueeze(0)
+    return transform(image).unsqueeze(0)
 
-# ✅ AI Super-Resolution from WebP
-def ai_super_resolve_webp(webp_image, model, original_size):
-    image_tensor = preprocess_webp_image(webp_image)
+# ✅ AI Decompression pipeline
+def ai_decompress_webp(compressed_bytes, model):
+    decoded = cv2.imdecode(np.frombuffer(compressed_bytes, np.uint8), cv2.IMREAD_COLOR)
+    decoded = cv2.cvtColor(decoded, cv2.COLOR_BGR2RGB)
+    pil = Image.fromarray(decoded)
 
+    tensor = preprocess(pil)
     with torch.no_grad():
-        sr_tensor = model(image_tensor)
+        out = model(tensor)
+    out_img = out.squeeze(0).permute(1, 2, 0).numpy()
+    out_img = ((out_img + 1) / 2 * 255).clip(0, 255).astype(np.uint8)
+    return Image.fromarray(out_img)
 
-    # Convert output tensor [-1, 1] to image [0, 255]
-    sr_image = sr_tensor.squeeze().permute(1, 2, 0).numpy()
-    sr_image = np.clip((sr_image + 1) / 2, 0, 1)
-    sr_image = (sr_image * 255).astype(np.uint8)
+# ✅ Streamlit App
+st.title("🖼️ WebP-Aware SRGAN - AI Image Restoration")
 
-    # Resize SR image to original dimensions
-    sr_image_resized = cv2.resize(sr_image, original_size, interpolation=cv2.INTER_CUBIC)
-    return Image.fromarray(sr_image_resized)
-
-# ✅ Streamlit Interface
-st.title("🌐 WebP-Aware AI Adaptive Image Restoration (SRGAN)")
-
-uploaded_file = st.file_uploader("Upload your image:", type=["png", "jpg", "jpeg", "webp"])
-
+uploaded_file = st.file_uploader("Upload an image (JPEG/PNG/WebP)", type=["png", "jpg", "jpeg", "webp"])
 if uploaded_file:
-    original_image = Image.open(uploaded_file).convert("RGB")
-    original_np = np.array(original_image)
-    original_size = original_image.size  # (width, height)
+    image = Image.open(uploaded_file).convert("RGB")
+    image_np = np.array(image)
 
-    # ✅ WebP Compression (simulate your storage scenario)
-    encode_params = [cv2.IMWRITE_WEBP_QUALITY, 80]
-    _, webp_buffer = cv2.imencode(".webp", cv2.cvtColor(original_np, cv2.COLOR_RGB2BGR), encode_params)
+    # ✅ Compress to WebP
+    webp_buffer = cv2.imencode(".webp", cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR), [cv2.IMWRITE_WEBP_QUALITY, 60])[1]
 
-    # ✅ AI Super-Resolution from compressed WebP
-    ai_restored_image = ai_super_resolve_webp(webp_buffer, model, original_size)
+    # ✅ AI Restore
+    ai_image = ai_decompress_webp(webp_buffer, model)
 
-    # ✅ Metrics Calculation (PSNR & SSIM)
-    original_resized = np.array(original_image.resize((256, 256)))
-    ai_resized = np.array(ai_restored_image.resize((256, 256)))
+    # ✅ Resize for Metrics (Match shapes)
+    original = cv2.resize(image_np, (256, 256))
+    ai_resized = cv2.resize(np.array(ai_image), (256, 256))
 
-    psnr_value = psnr(original_resized, ai_resized, data_range=255)
-    ssim_value = ssim(original_resized, ai_resized, channel_axis=2, data_range=255)
+    psnr_val = psnr(original, ai_resized, data_range=255)
+    ssim_val = ssim(original, ai_resized, channel_axis=2, data_range=255)
 
-    # ✅ Display Results
-    st.image([original_image, ai_restored_image], caption=["Original Image", "AI Restored Image"])
-    st.write(f"📊 **AI PSNR:** {psnr_value:.2f} dB | **AI SSIM:** {ssim_value:.4f}")
+    # ✅ Show Results
+    st.image([image, ai_image], caption=["Original", "AI Restored"])
+    st.write(f"📊 **PSNR**: {psnr_val:.2f} dB | **SSIM**: {ssim_val:.4f}")
 
-    # ✅ Download Button
-    img_byte_arr = io.BytesIO()
-    ai_restored_image.save(img_byte_arr, format="PNG")
-    st.download_button("Download Restored Image", img_byte_arr.getvalue(), "ai_restored.png", "image/png")
+    # ✅ Download
+    img_bytes = io.BytesIO()
+    ai_image.save(img_bytes, format="PNG")
+    st.download_button("⬇️ Download Restored Image", img_bytes.getvalue(), file_name="ai_restored.png", mime="image/png")
