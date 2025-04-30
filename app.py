@@ -106,19 +106,32 @@ if uploaded_file:
     # ✅ WebP Compression (simulate your storage scenario)
     encode_params = [cv2.IMWRITE_WEBP_QUALITY, 80]
     _, webp_buffer = cv2.imencode(".webp", cv2.cvtColor(original_np, cv2.COLOR_RGB2BGR), encode_params)
+    webp_size_kb = len(webp_buffer) / 1024
+
+    # ✅ Decode WebP Compressed Image
+    webp_decoded_np = cv2.imdecode(np.frombuffer(webp_buffer, np.uint8), cv2.IMREAD_COLOR)
+    webp_decoded_rgb = cv2.cvtColor(webp_decoded_np, cv2.COLOR_BGR2RGB)
+    webp_image_pil = Image.fromarray(webp_decoded_rgb)
 
     # ✅ AI Super-Resolution from compressed WebP
     ai_restored_image = ai_super_resolve_webp(webp_buffer, model, original_size)
 
     # ✅ Metrics Calculation (PSNR & SSIM)
     original_resized = np.array(original_image.resize((256, 256)))
+    webp_resized = np.array(webp_image_pil.resize((256, 256)))
     ai_resized = np.array(ai_restored_image.resize((256, 256)))
 
+    # ✅ PSNR & SSIM Calculation
+    psnr_webp = psnr(original_resized, webp_resized, data_range=255)
+    ssim_webp = ssim(original_resized, webp_resized, channel_axis=2, data_range=255)
     psnr_value = psnr(original_resized, ai_resized, data_range=255)
     ssim_value = ssim(original_resized, ai_resized, channel_axis=2, data_range=255)
 
     # ✅ Display Results
-    st.image([original_image, ai_restored_image], caption=["Original Image", "AI Restored Image"])
+    st.image([original_image, webp_image_pil, ai_restored_image], caption=["Original Image", f"WebP Compressed ({webp_size_kb:.2f} KB)", "AI Restored Image"])
+    st.write("📊 **Quality Metrics (256x256 resized):**")
+    st.write(f"📦 **WebP Size:** {webp_size_kb:.2f} KB")
+    st.write(f"🎯 **WebP PSNR:** {psnr_webp:.2f} dB | 🔍 SSIM: {ssim_webp:.4f}")
     st.write(f"📊 **AI PSNR:** {psnr_value:.2f} dB | **AI SSIM:** {ssim_value:.4f}")
 
     # ✅ Download Button
