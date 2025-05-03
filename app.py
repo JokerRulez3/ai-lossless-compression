@@ -77,6 +77,12 @@ def preprocess_webp_image(webp_buffer):
     ])
     return transform(img_rgb).unsqueeze(0)
 
+# ✅ Traditional Bicubic Super-Resolution
+def traditional_sr_bicubic(image_np, scale=4):
+    height, width = image_np.shape[:2]
+    return cv2.resize(image_np, (width * scale, height * scale), interpolation=cv2.INTER_CUBIC)
+
+
 # ✅ AI Super-Resolution from WebP
 def ai_super_resolve_webp(webp_image, model, original_size):
     image_tensor = preprocess_webp_image(webp_image)
@@ -113,6 +119,12 @@ if uploaded_file:
     webp_decoded_rgb = cv2.cvtColor(webp_decoded_np, cv2.COLOR_BGR2RGB)
     webp_image_pil = Image.fromarray(webp_decoded_rgb)
 
+    # ✅ Traditional SR using Bicubic
+    bicubic_sr_np = traditional_sr_bicubic(original_np, scale=1)  # Scale 1x for fair match
+    bicubic_resized = cv2.resize(bicubic_sr_np, (256, 256))
+    psnr_bicubic = psnr(original_resized, bicubic_resized, data_range=255)
+    ssim_bicubic = ssim(original_resized, bicubic_resized, channel_axis=2, data_range=255)
+
     # ✅ AI Super-Resolution from compressed WebP
     ai_restored_image = ai_super_resolve_webp(webp_buffer, model, original_size)
 
@@ -128,10 +140,12 @@ if uploaded_file:
     ssim_value = ssim(original_resized, ai_resized, channel_axis=2, data_range=255)
 
     # ✅ Display Results
-    st.image([original_image, webp_image_pil, ai_restored_image], caption=["Original Image", f"WebP Compressed ({webp_size_kb:.2f} KB)", "AI Restored Image"])
+    st.image([original_image, webp_image_pil, Image.fromarray(bicubic_sr_np), ai_restored_image], 
+             caption=["Original Image", f"WebP Compressed ({webp_size_kb:.2f} KB)", "Traditional SR", "AI Restored Image"])
     st.write("📊 **Quality Metrics (256x256 resized):**")
     st.write(f"📦 **WebP Size:** {webp_size_kb:.2f} KB")
     st.write(f"🎯 **WebP PSNR:** {psnr_webp:.2f} dB | 🔍 SSIM: {ssim_webp:.4f}")
+    st.write(f"📏 Bicubic PSNR: {psnr_bicubic:.2f} dB | SSIM: {ssim_bicubic:.4f}")
     st.write(f"📊 **AI PSNR:** {psnr_value:.2f} dB | **AI SSIM:** {ssim_value:.4f}")
 
     # ✅ Download Button
