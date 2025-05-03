@@ -10,10 +10,10 @@ import io
 import os
 from skimage.metrics import peak_signal_noise_ratio as psnr, structural_similarity as ssim
 
-# ✅ Model Path
+#Model Path
 MODEL_PATH = "models/srgan_generator_webp_block5.pth"
 
-# ✅ Residual Block Definition
+#Residual Block Definition
 class ResidualBlock(nn.Module):
     def __init__(self, in_channels):
         super().__init__()
@@ -28,7 +28,7 @@ class ResidualBlock(nn.Module):
         x = self.bn2(self.conv2(x))
         return F.leaky_relu(x + residual, 0.01)
 
-# ✅ SRGAN Generator Model Definition
+#SRGAN Generator Model Definition
 class SRGenerator(nn.Module):
     def __init__(self):
         super().__init__()
@@ -53,7 +53,7 @@ class SRGenerator(nn.Module):
         x = self.tanh(self.conv2(x))
         return x
 
-# ✅ Load Model
+#Load Model
 @st.cache_resource
 def load_model():
     model = SRGenerator()
@@ -63,7 +63,7 @@ def load_model():
 
 model = load_model()
 
-# ✅ Image Preprocessing (Matching Training Setup)
+#Image Preprocessing (Matching Training Setup)
 def preprocess_webp_image(webp_buffer):
     # Decode WebP compressed image
     img_np = cv2.imdecode(np.frombuffer(webp_buffer, np.uint8), cv2.IMREAD_COLOR)
@@ -77,13 +77,13 @@ def preprocess_webp_image(webp_buffer):
     ])
     return transform(img_rgb).unsqueeze(0)
 
-# ✅ Traditional Bicubic Super-Resolution
+#Traditional Bicubic Super-Resolution
 def traditional_sr_bicubic(image_np, scale=4):
     height, width = image_np.shape[:2]
     return cv2.resize(image_np, (width * scale, height * scale), interpolation=cv2.INTER_CUBIC)
 
 
-# ✅ AI Super-Resolution from WebP
+#AI Super-Resolution from WebP
 def ai_super_resolve_webp(webp_image, model, original_size):
     image_tensor = preprocess_webp_image(webp_image)
 
@@ -99,8 +99,8 @@ def ai_super_resolve_webp(webp_image, model, original_size):
     sr_image_resized = cv2.resize(sr_image, original_size, interpolation=cv2.INTER_CUBIC)
     return Image.fromarray(sr_image_resized)
 
-# ✅ Streamlit Interface
-st.title("🌐 WebP-Aware AI Adaptive Image Restoration (SRGAN)")
+#Streamlit Interface
+st.title("WebP-Aware AI Adaptive Image Restoration (SRGAN)")
 
 uploaded_file = st.file_uploader("Upload your image:", type=["png", "jpg", "jpeg", "webp"])
 
@@ -109,29 +109,29 @@ if uploaded_file:
     original_np = np.array(original_image)
     original_size = original_image.size  # (width, height)
 
-    # ✅ WebP Compression (simulate your storage scenario)
+    #WebP Compression (simulate your storage scenario)
     encode_params = [cv2.IMWRITE_WEBP_QUALITY, 80]
     _, webp_buffer = cv2.imencode(".webp", cv2.cvtColor(original_np, cv2.COLOR_RGB2BGR), encode_params)
     webp_size_kb = len(webp_buffer) / 1024
 
-    # ✅ Decode WebP Compressed Image
+    #Decode WebP Compressed Image
     webp_decoded_np = cv2.imdecode(np.frombuffer(webp_buffer, np.uint8), cv2.IMREAD_COLOR)
     webp_decoded_rgb = cv2.cvtColor(webp_decoded_np, cv2.COLOR_BGR2RGB)
     webp_image_pil = Image.fromarray(webp_decoded_rgb)
 
-    # ✅ Traditional SR using Bicubic
+    #Traditional SR using Bicubic
     bicubic_sr_np = traditional_sr_bicubic(webp_decoded_rgb, scale=4)
     bicubic_resized = cv2.resize(bicubic_sr_np, (256, 256))
 
-    # ✅ AI Super-Resolution from compressed WebP
+    #AI Super-Resolution from compressed WebP
     ai_restored_image = ai_super_resolve_webp(webp_buffer, model, original_size)
 
-    # ✅ Metrics Calculation (PSNR & SSIM)
+    #Metrics Calculation (PSNR & SSIM)
     original_resized = np.array(original_image.resize((256, 256)))
     webp_resized = np.array(webp_image_pil.resize((256, 256)))
     ai_resized = np.array(ai_restored_image.resize((256, 256)))
 
-    # ✅ PSNR & SSIM Calculation
+    #PSNR & SSIM Calculation
     psnr_webp = psnr(original_resized, webp_resized, data_range=255)
     ssim_webp = ssim(original_resized, webp_resized, channel_axis=2, data_range=255)
     psnr_value = psnr(original_resized, ai_resized, data_range=255)
@@ -139,14 +139,14 @@ if uploaded_file:
     psnr_bicubic = psnr(original_resized, bicubic_resized, data_range=255)
     ssim_bicubic = ssim(original_resized, bicubic_resized, channel_axis=2, data_range=255)
 
-    # ✅ Display Results
+    #Display Results
     st.image([original_image, webp_image_pil, Image.fromarray(bicubic_sr_np), ai_restored_image], 
              caption=["Original Image", f"WebP Compressed ({webp_size_kb:.2f} KB)", "Traditional SR", "AI Restored Image"])
-    st.write("📊 **Quality Metrics (256x256 resized):**")
-    st.write(f"📦 **WebP Size:** {webp_size_kb:.2f} KB")
-    st.write(f"🎯 **WebP PSNR:** {psnr_webp:.2f} dB | 🔍 SSIM: {ssim_webp:.4f}")
-    st.write(f"📏 Bicubic PSNR: {psnr_bicubic:.2f} dB | SSIM: {ssim_bicubic:.4f}")
-    st.write(f"📊 **AI PSNR:** {psnr_value:.2f} dB | **AI SSIM:** {ssim_value:.4f}")
+    st.write("**Quality Metrics (256x256 resized):**")
+    st.write(f"**WebP Size:** {webp_size_kb:.2f} KB")
+    st.write(f"**WebP PSNR:** {psnr_webp:.2f} dB | 🔍 SSIM: {ssim_webp:.4f}")
+    st.write(f"Bicubic PSNR: {psnr_bicubic:.2f} dB | SSIM: {ssim_bicubic:.4f}")
+    st.write(f"**AI PSNR:** {psnr_value:.2f} dB | **AI SSIM:** {ssim_value:.4f}")
 
     # ✅ Download Button
     img_byte_arr = io.BytesIO()
