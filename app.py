@@ -122,8 +122,6 @@ if uploaded_file:
     # ✅ Traditional SR using Bicubic
     bicubic_sr_np = traditional_sr_bicubic(original_np, scale=1)  # Scale 1x for fair match
     bicubic_resized = cv2.resize(bicubic_sr_np, (256, 256))
-    psnr_bicubic = psnr(original_resized, bicubic_resized, data_range=255)
-    ssim_bicubic = ssim(original_resized, bicubic_resized, channel_axis=2, data_range=255)
 
     # ✅ AI Super-Resolution from compressed WebP
     ai_restored_image = ai_super_resolve_webp(webp_buffer, model, original_size)
@@ -138,6 +136,8 @@ if uploaded_file:
     ssim_webp = ssim(original_resized, webp_resized, channel_axis=2, data_range=255)
     psnr_value = psnr(original_resized, ai_resized, data_range=255)
     ssim_value = ssim(original_resized, ai_resized, channel_axis=2, data_range=255)
+    psnr_bicubic = psnr(original_resized, bicubic_resized, data_range=255)
+    ssim_bicubic = ssim(original_resized, bicubic_resized, channel_axis=2, data_range=255)
 
     # ✅ Display Results
     st.image([original_image, webp_image_pil, Image.fromarray(bicubic_sr_np), ai_restored_image], 
