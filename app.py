@@ -120,7 +120,7 @@ if uploaded_file:
     webp_image_pil = Image.fromarray(webp_decoded_rgb)
 
     # ✅ Traditional SR using Bicubic
-    bicubic_sr_np = traditional_sr_bicubic(original_np, scale=1)  # Scale 1x for fair match
+    bicubic_sr_np = traditional_sr_bicubic(webp_decoded_rgb, scale=4)
     bicubic_resized = cv2.resize(bicubic_sr_np, (256, 256))
 
     # ✅ AI Super-Resolution from compressed WebP
